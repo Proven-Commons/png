@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Tests for the Lean PNG chunk parser and printer.
 
-Four parts.
+Five parts. Parts 1 to 4 are the slice 1 suite, unchanged.
+Part 5 is slice 2: the IHDR header read through the `header`
+request.
 
 1. Real PNG files built with Python zlib: an IHDR chunk (the
    width, height, bit depth, and colour type are stated per file
@@ -29,6 +31,19 @@ Four parts.
    accepted mutation must reprint to the oracle's reading.
 
 4. Malformed request lines must be answered `error`.
+
+5. The header read (slice 2). The same real files are asked
+   through `header`, and their decoded fields are checked. Hand
+   built headers cover every colour type with each depth the
+   PNG specification allows it. An enumeration crosses colour
+   types 0 to 12 and 255 with depths 0, 1, 2, 3, 4, 5, 8, 16,
+   and 255, settled by the allowed table written in this
+   harness. Mutations (a zero width, a zero height, a
+   compression byte of 1, a filter byte of 1, an interlace byte
+   of 2, a first chunk of length 12) must be rejected. Random
+   well formed headers are built into whole files and checked
+   through `header` for their fields and through `parse` for a
+   byte for byte reprint.
 
     python3 tests/run_tests.py [--seed N] [--count N]
 
@@ -244,9 +259,9 @@ def real_png(width, height, colour_type, rng, split_idat=False, extra=()):
     return b"".join(parts)
 
 
-def run_real(seed):
+def real_files(seed):
     rng = random.Random(seed)
-    files = [
+    return [
         ("1x1, bit depth 8, colour type 2 (RGB)", real_png(1, 1, 2, rng)),
         ("4x3, bit depth 8, colour type 6 (RGBA)", real_png(4, 3, 6, rng)),
         (
@@ -258,6 +273,10 @@ def run_real(seed):
             real_png(7, 5, 2, rng, extra=[(b"tEXt", b"Title\x00A small test")]),
         ),
     ]
+
+
+def run_real(seed):
+    files = real_files(seed)
     lines = []
     failures = []
     answers, problems = ask_all([request(data) for _, data in files])
@@ -496,6 +515,237 @@ def run_malformed():
     return lines, failures
 
 
+# ---------------------------------------------------------------- the
+# header read (slice 2). The strict oracle for this part is the
+# allowed table below, written from the PNG specification: a
+# colour type allows exactly these bit depths.
+
+
+ALLOWED = {0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8], 4: [8, 16], 6: [8, 16]}
+
+
+def ihdr_full(width, height, bit_depth, colour_type, comp=0, filt=0, interlace=0):
+    return struct.pack(
+        ">IIBBBBB", width, height, bit_depth, colour_type, comp, filt, interlace
+    )
+
+
+def header_request(data):
+    return "header " + codes(data)
+
+
+def header_line(width, height, bit_depth, colour_type, interlace):
+    text = f"{width}x{height} d{bit_depth} t{colour_type} i{interlace}"
+    return "ok:" + codes(text.encode("ascii"))
+
+
+def header_file(ihdr_bytes, idat_data=b"\x00\x01\x02\x03"):
+    return (
+        SIG
+        + make_chunk(b"IHDR", ihdr_bytes)
+        + make_chunk(b"IDAT", zlib.compress(idat_data))
+        + make_chunk(b"IEND", b"")
+    )
+
+
+def run_real_headers(seed):
+    """The real files of part 1, asked through `header`. Their
+    (width, height, bit depth, colour type, interlace) are known
+    from how they were built."""
+    known = [(1, 1, 8, 2, 0), (4, 3, 8, 6, 0), (16, 16, 8, 0, 0), (7, 5, 8, 2, 0)]
+    files = real_files(seed)
+    lines = []
+    failures = []
+    answers, problems = ask_all([header_request(data) for _, data in files])
+    for problem in problems:
+        failures.append(f"real headers: tool problem: {problem}")
+    agree = 0
+    for (name, _), fields, ans in zip(files, known, answers):
+        want = header_line(*fields)
+        if ans == want:
+            agree += 1
+        else:
+            failures.append(f"real header {name}: want {want!r}, got {ans!r}")
+    lines.append(
+        f"Real PNG files through `header`: {agree} of {len(files)} decoded "
+        "to the fields they were built with"
+    )
+    return lines, failures
+
+
+def run_header_types():
+    """One file per allowed (colour type, bit depth) pair, the
+    interlace byte alternating, each checked for its fields."""
+    cases = []
+    for ctype in sorted(ALLOWED):
+        for depth in ALLOWED[ctype]:
+            interlace = (len(cases) % 2)
+            cases.append((3, 2, depth, ctype, interlace))
+    lines = []
+    failures = []
+    answers, problems = ask_all(
+        [
+            header_request(
+                header_file(ihdr_full(w, h, d, t, interlace=i))
+            )
+            for (w, h, d, t, i) in cases
+        ]
+    )
+    for problem in problems:
+        failures.append(f"header types: tool problem: {problem}")
+    agree = 0
+    for fields, ans in zip(cases, answers):
+        want = header_line(*fields)
+        if ans == want:
+            agree += 1
+        else:
+            failures.append(f"header type {fields}: want {want!r}, got {ans!r}")
+    lines.append(
+        f"Hand-built headers, every colour type and allowed depth: "
+        f"{agree} of {len(cases)} accepted with their fields"
+    )
+    return lines, failures
+
+
+def run_header_grid():
+    """The enumeration: colour types 0 to 12 and 255, against
+    depths 0, 1, 2, 3, 4, 5, 8, 16, 255. The table settles each."""
+    types = list(range(13)) + [255]
+    depths = [0, 1, 2, 3, 4, 5, 8, 16, 255]
+    cases = [(t, d) for t in types for d in depths]
+    lines = []
+    failures = []
+    answers, problems = ask_all(
+        [
+            header_request(header_file(ihdr_full(2, 2, d, t)))
+            for t, d in cases
+        ]
+    )
+    for problem in problems:
+        failures.append(f"header grid: tool problem: {problem}")
+    agree = 0
+    for (t, d), ans in zip(cases, answers):
+        want = header_line(2, 2, d, t, 0) if d in ALLOWED.get(t, []) else "none"
+        if ans == want:
+            agree += 1
+        else:
+            failures.append(f"header grid type {t} depth {d}: want {want!r}, got {ans!r}")
+    lines.append(
+        f"Header enumeration, {len(types)} colour types by {len(depths)} "
+        f"depths against the allowed table: {agree} of {len(cases)} agreements"
+    )
+    return lines, failures
+
+
+def run_header_mutations():
+    """Each of these files is one change away from a valid one,
+    and each must be rejected by the header read. The CRCs are
+    recomputed, so the rejection is for the header rule itself
+    (except the length 12 case, which the chunk layer rejects)."""
+    good = ihdr_full(4, 3, 8, 6)
+    cases = [
+        ("a width of zero", header_file(ihdr_full(0, 3, 8, 6))),
+        ("a height of zero", header_file(ihdr_full(4, 0, 8, 6))),
+        ("a compression byte of 1", header_file(ihdr_full(4, 3, 8, 6, comp=1))),
+        ("a filter byte of 1", header_file(ihdr_full(4, 3, 8, 6, filt=1))),
+        ("an interlace byte of 2", header_file(ihdr_full(4, 3, 8, 6, interlace=2))),
+        (
+            "a first chunk of length 12",
+            SIG
+            + make_chunk(b"IHDR", good[:12])
+            + make_chunk(b"IDAT", zlib.compress(b"\x00\x01\x02\x03"))
+            + make_chunk(b"IEND", b""),
+        ),
+    ]
+    lines = []
+    failures = []
+    answers, problems = ask_all([header_request(data) for _, data in cases])
+    for problem in problems:
+        failures.append(f"header mutations: tool problem: {problem}")
+    agree = 0
+    for (name, _), ans in zip(cases, answers):
+        if ans == "none":
+            agree += 1
+        else:
+            failures.append(f"header mutation {name}: want none, got {ans!r}")
+    lines.append(f"Header mutations rejected: {agree} of {len(cases)}")
+    return lines, failures
+
+
+def run_header_random(seed, count=200):
+    """Random well formed headers, built into whole files. Each
+    file is checked through `header` for its fields and through
+    `parse` for a byte for byte reprint."""
+    rng = random.Random(seed + 11)
+    cases = []
+    for _ in range(count):
+        ctype = rng.choice(sorted(ALLOWED))
+        depth = rng.choice(ALLOWED[ctype])
+        width = rng.choice([1, 2, 17, 640, 65535, rng.randrange(1, 100001)])
+        height = rng.choice([1, 3, 42, 480, 65535, rng.randrange(1, 100001)])
+        interlace = rng.randrange(0, 2)
+        fields = (width, height, depth, ctype, interlace)
+        cases.append(
+            (fields, header_file(ihdr_full(width, height, depth, ctype, interlace=interlace)))
+        )
+    lines = []
+    failures = []
+    answers, problems = ask_all([header_request(data) for _, data in cases])
+    for problem in problems:
+        failures.append(f"random headers: tool problem: {problem}")
+    answers2, problems2 = ask_all([request(data) for _, data in cases])
+    for problem in problems2:
+        failures.append(f"random headers, parse: tool problem: {problem}")
+    agree = 0
+    for (fields, _), ans in zip(cases, answers):
+        want = header_line(*fields)
+        if ans == want:
+            agree += 1
+        else:
+            failures.append(f"random header {fields}: want {want!r}, got {ans!r}")
+    lines.append(
+        f"Random well formed headers: {agree} of {len(cases)} decoded "
+        "to the fields they were built with"
+    )
+    agree2 = 0
+    for (_, data), ans in zip(cases, answers2):
+        want = "ok:" + codes(data)
+        if ans == want:
+            agree2 += 1
+        else:
+            failures.append(f"random header file: want byte for byte reprint, got {ans!r}")
+    lines.append(
+        f"Random header files through `parse`: {agree2} of {len(cases)} "
+        "reprinted byte for byte"
+    )
+    return lines, failures
+
+
+def run_header_malformed():
+    lines = []
+    failures = []
+    bad = ["header 256", "header 12a", "header 97 98"]
+    answers, problems = ask_all(bad)
+    for problem in problems:
+        failures.append(f"header malformed: tool problem: {problem}")
+    bad_ok = 0
+    for line, ans in zip(bad, answers):
+        if ans == "error":
+            bad_ok += 1
+        else:
+            failures.append(f"header malformed {line!r}: want error, got {ans!r}")
+    lines.append(f"Malformed header requests answered error: {bad_ok} of {len(bad)}")
+    none_ok = 0
+    answers, _ = ask_all(["header", "header "])
+    for ans in answers:
+        if ans == "none":
+            none_ok += 1
+        else:
+            failures.append(f"empty header request: want none, got {ans!r}")
+    lines.append(f"Header requests with no codes answered none: {none_ok} of 2")
+    return lines, failures
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=SEED_DEFAULT)
@@ -523,6 +773,12 @@ def main():
         run_random(args.seed, args.count),
         run_mutations(args.seed),
         run_malformed(),
+        run_real_headers(args.seed),
+        run_header_types(),
+        run_header_grid(),
+        run_header_mutations(),
+        run_header_random(args.seed),
+        run_header_malformed(),
     ):
         lines, failures = part
         all_lines += lines

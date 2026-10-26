@@ -7,5 +7,9 @@
 -/
 
 import Proofs.RoundTrip
+import Proofs.Header
 
 #print axioms Png.Proofs.parse_print
+#print axioms Png.Proofs.parseIhdr_print
+#print axioms Png.Proofs.checkPair_iff
+#print axioms Png.Proofs.parseFile_print
