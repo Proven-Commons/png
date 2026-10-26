@@ -18,3 +18,13 @@ Written by `tests/run_tests.py`. Rerun it to check these numbers.
 - Requests with no codes answered none: 2 of 2
 - Named differences: none
 - Failures: 0
+
+## Axiom check
+
+Recorded on 2026-10-26 against the head of this pull request, on Lean 4.35.0. The line below is the output printed for `Proofs/Verify.lean` during a clean `lake build` (17 jobs).
+
+```text
+'Png.Proofs.parse_print' depends on axioms: [propext, Quot.sound]
+```
+
+No other axiom is named, and sorryAx is not named.
