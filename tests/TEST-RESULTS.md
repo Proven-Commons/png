@@ -21,7 +21,7 @@ Written by `tests/run_tests.py`. Rerun it to check these numbers.
 
 ## Axiom check
 
-Recorded on 2026-10-26 against the head of this pull request, on Lean 4.35.0. The line below is the output printed for `Proofs/Verify.lean` during a clean `lake build` (17 jobs).
+Recorded on 2026-10-26 against the head of this pull request, on Lean 4.35.0. The line below is the output printed for `Png/Proofs/Verify.lean` during a clean `lake build` (17 jobs).
 
 ```text
 'Png.Proofs.parse_print' depends on axioms: [propext, Quot.sound]

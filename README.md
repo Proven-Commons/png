@@ -2,11 +2,11 @@
 
 A PNG chunk parser and printer in Lean. It reads the chunk layer of a PNG file: the signature, then each chunk's length, type, data, and CRC-32 check. It does not decode pixels, and it does not inflate IDAT data. The main claim is proved: parsing what the printer wrote returns the same chunk list. The tests run the parser against real PNG files built with Python's zlib and against a strict oracle written from the rules; see `tests/TEST-RESULTS.md` for the counts.
 
-Status: in progress. The specification has not yet been approved by a reviewer apart from its author, and no statement file (`Spec.lean`) has been added by a reviewer, so this is not verified.
+Status: in progress. The specification has not yet been approved by a reviewer apart from its author, and no statement file (`Png/Spec.lean`) has been added by a reviewer, so this is not verified.
 
 ## What is proved
 
-The definitions are in `Png/Value.lean` (the chunk type, the printer, and the well-formedness rules), `Png/Parse.lean` (the parser), and `Png/Crc32.lean` (the CRC-32). The proofs are in `Proofs/RoundTrip.lean`.
+The definitions are in `Png/Value.lean` (the chunk type, the printer, and the well-formedness rules), `Png/Parse.lean` (the parser), and `Png/Crc32.lean` (the CRC-32). The proofs are in `Png/Proofs/RoundTrip.lean`.
 
 | Claim | Theorem |
 |-------|---------|
@@ -52,7 +52,7 @@ Needs Linux, elan, and Python 3.11 or later.
 
 ```
 lake build
-grep -rn "sorry" --include="*.lean" Png Proofs Main.lean Png.lean Proofs.lean
+grep -rn "sorry" --include="*.lean" Png Proofs Main.lean Png.lean Png/Proofs.lean
 python3 tests/run_tests.py
 ```
 
