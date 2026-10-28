@@ -44,7 +44,7 @@ The decoded header value holds the width and the height as numbers, and the bit 
 
 A header reads only when all of these hold:
 
-- the width is above zero, and the height is above zero.
+- the width is above zero and below 2^31, and the height is above zero and below 2^31. The PNG specification caps each of them at 2^31 - 1.
 - the compression byte is zero, and the filter byte is zero.
 - the interlace byte is 0 or 1.
 - the bit depth is one the colour type allows, by this table from the PNG specification:
@@ -73,7 +73,7 @@ The proved claim of slice 1 is a round trip: for every well formed chunk list, p
 
 Slice 2 adds three proved claims:
 
-- The header round trip: reading the printed bytes of a well formed header gives the header back. Well formed means the width and height are above zero and below 2^32, the interlace byte is 0 or 1, and the bit depth is one the colour type allows.
+- The header round trip: reading the printed bytes of a well formed header gives the header back. Well formed means the width and height are above zero and below 2^31, the interlace byte is 0 or 1, and the bit depth is one the colour type allows.
 - The table is exact: the depth checker agrees with the table above, written out as a list of (colour type, bit depth) pairs, on every colour type byte and every bit depth byte.
 - The file level round trip: a document that is well formed at the chunk layer and whose first chunk's data is the printed form of a well formed header prints and reads back whole, header included.
 

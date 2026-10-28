@@ -38,12 +38,13 @@ request.
    PNG specification allows it. An enumeration crosses colour
    types 0 to 12 and 255 with depths 0, 1, 2, 3, 4, 5, 8, 16,
    and 255, settled by the allowed table written in this
-   harness. Mutations (a zero width, a zero height, a
-   compression byte of 1, a filter byte of 1, an interlace byte
-   of 2, a first chunk of length 12) must be rejected. Random
-   well formed headers are built into whole files and checked
-   through `header` for their fields and through `parse` for a
-   byte for byte reprint.
+   harness. Mutations (a zero width, a zero height, a width of
+   2^31, a height of 2^31, a width of 2^32 - 1, a height of
+   2^32 - 1, a compression byte of 1, a filter byte of 1, an
+   interlace byte of 2, a first chunk of length 12) must be
+   rejected. Random well formed headers are built into whole
+   files and checked through `header` for their fields and
+   through `parse` for a byte for byte reprint.
 
     python3 tests/run_tests.py [--seed N] [--count N]
 
@@ -646,6 +647,10 @@ def run_header_mutations():
     cases = [
         ("a width of zero", header_file(ihdr_full(0, 3, 8, 6))),
         ("a height of zero", header_file(ihdr_full(4, 0, 8, 6))),
+        ("a width of 2^31", header_file(ihdr_full(2**31, 3, 8, 6))),
+        ("a height of 2^31", header_file(ihdr_full(4, 2**31, 8, 6))),
+        ("a width of 2^32 - 1", header_file(ihdr_full(2**32 - 1, 3, 8, 6))),
+        ("a height of 2^32 - 1", header_file(ihdr_full(4, 2**32 - 1, 8, 6))),
         ("a compression byte of 1", header_file(ihdr_full(4, 3, 8, 6, comp=1))),
         ("a filter byte of 1", header_file(ihdr_full(4, 3, 8, 6, filt=1))),
         ("an interlace byte of 2", header_file(ihdr_full(4, 3, 8, 6, interlace=2))),
@@ -792,6 +797,25 @@ def main():
         timeout=120,
     ).stdout.strip()
 
+    # The axiom check: Proofs/Verify.lean prints the axioms of
+    # the four named theorems with `#print axioms`. Its output
+    # goes into the results file, in the Axiom check section.
+    axiom_run = subprocess.run(
+        ["lake", "env", "lean", "Proofs/Verify.lean"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    axiom_lines = [
+        line for line in axiom_run.stdout.strip().splitlines() if line.strip()
+    ]
+    if axiom_run.returncode != 0 or len(axiom_lines) != 4:
+        all_failures.append(
+            "axiom check: running Proofs/Verify.lean gave "
+            f"status {axiom_run.returncode} and {len(axiom_lines)} lines"
+        )
+
     out = ["# Test results", ""]
     out.append("Written by `tests/run_tests.py`. Rerun it to check these numbers.")
     out.append("")
@@ -803,6 +827,17 @@ def main():
     out.append(f"- Seed: {args.seed}")
     for line in all_lines:
         out.append(f"- {line}")
+    out.append("")
+    out.append("## Axiom check")
+    out.append("")
+    out.append(
+        "The output of `#print axioms` for the four named theorems, "
+        "from `lake env lean Proofs/Verify.lean`:"
+    )
+    out.append("")
+    for line in axiom_lines:
+        out.append(f"- {line}")
+    out.append("")
     out.append("- Named differences: none")
     out.append(f"- Failures: {len(all_failures)}")
     for failure in all_failures[:50]:

@@ -15,7 +15,8 @@
   interlace byte is 0 (no interlace) or 1 (Adam7), and is held.
 
   A header is accepted only when the width and the height are
-  both above zero, the compression and filter bytes are zero,
+  both above zero and below 2^31 (the PNG specification caps
+  each of them at 2^31 - 1), the compression and filter bytes are zero,
   the interlace byte is 0 or 1, and the bit depth is one the
   colour type allows. The allowed pairs are the ones the PNG
   specification names:
@@ -77,11 +78,11 @@ def allowedPairs : List (Nat × Nat) :=
 def checkPair (ct bd : UInt8) : Bool := pairAllowed ct.toNat bd.toNat
 
 /-- A header is well formed when the width and the height are
-    above zero and below 2^32, the interlace byte is 0 or 1, and
+    above zero and below 2^31, the interlace byte is 0 or 1, and
     the bit depth is one the colour type allows. -/
 def WFHeader (h : Ihdr) : Prop :=
-  0 < h.width ∧ h.width < 4294967296 ∧
-  0 < h.height ∧ h.height < 4294967296 ∧
+  0 < h.width ∧ h.width < 2147483648 ∧
+  0 < h.height ∧ h.height < 2147483648 ∧
   (h.interlace = 0 ∨ h.interlace = 1) ∧
   checkPair h.colorType h.bitDepth = true
 
@@ -93,7 +94,8 @@ def printIhdr (h : Ihdr) : List UInt8 :=
 
 /-- Read 13 bytes as a header. Anything but exactly 13 bytes is
     rejected, and so is a header that breaks any of the rules at
-    the top of this file: a width or height of zero, a nonzero
+    the top of this file: a width or height of zero or of 2^31
+    or more, a nonzero
     compression or filter byte, an interlace byte above 1, or a
     bit depth the colour type does not allow. -/
 def parseIhdr (bs : List UInt8) : Option Ihdr :=
@@ -101,6 +103,7 @@ def parseIhdr (bs : List UInt8) : Option Ihdr :=
   | w1 :: w2 :: w3 :: w4 :: h1 :: h2 :: h3 :: h4 :: bd :: ct :: comp :: filt :: int :: rest =>
     if rest ≠ [] then none
     else if u32 w1 w2 w3 w4 = 0 ∨ u32 h1 h2 h3 h4 = 0 then none
+    else if u32 w1 w2 w3 w4 ≥ 2147483648 ∨ u32 h1 h2 h3 h4 ≥ 2147483648 then none
     else if comp ≠ 0 ∨ filt ≠ 0 then none
     else if int > 1 then none
     else if checkPair ct bd then

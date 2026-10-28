@@ -17,7 +17,7 @@ The definitions are in `Png/Value.lean` (the chunk type, the printer, and the we
 | The depth checker agrees with the written out table of allowed (colour type, bit depth) pairs on every byte pair. | `Png.Proofs.checkPair_iff` |
 | Printing a fully well formed document and reading it back at both layers gives the document back, header included. | `Png.Proofs.parseFile_print` |
 
-A chunk list is well formed when it is a first chunk, then any middle chunks, then the IEND chunk; the first chunk has type IHDR and 13 data bytes; no chunk before the last is the IEND chunk; every chunk type is four ASCII letters; and every data length is below 2^31. A header is well formed when its width and height are above zero and below 2^32, its interlace byte is 0 or 1, and its bit depth is one its colour type allows. Each of these theorems checks against two of the standard axioms (`propext`, `Quot.sound`), which a reader can confirm with `#print axioms` on the theorem's name.
+A chunk list is well formed when it is a first chunk, then any middle chunks, then the IEND chunk; the first chunk has type IHDR and 13 data bytes; no chunk before the last is the IEND chunk; every chunk type is four ASCII letters; and every data length is below 2^31. A header is well formed when its width and height are above zero and below 2^31, its interlace byte is 0 or 1, and its bit depth is one its colour type allows. Each of these theorems checks against two of the standard axioms (`propext`, `Quot.sound`), which a reader can confirm with `#print axioms` on the theorem's name.
 
 The command-line tool in `Main.lean` calls these functions directly.
 

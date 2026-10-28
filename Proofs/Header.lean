@@ -37,6 +37,7 @@ theorem parseIhdr_step (w1 w2 w3 w4 h1 h2 h3 h4 bd ct comp filt int : UInt8)
       :: bd :: ct :: comp :: filt :: int :: rest) =
       if rest ≠ [] then none
       else if u32 w1 w2 w3 w4 = 0 ∨ u32 h1 h2 h3 h4 = 0 then none
+      else if u32 w1 w2 w3 w4 ≥ 2147483648 ∨ u32 h1 h2 h3 h4 ≥ 2147483648 then none
       else if comp ≠ 0 ∨ filt ≠ 0 then none
       else if int > 1 then none
       else if checkPair ct bd then
@@ -55,6 +56,8 @@ theorem parseIhdr_print (h : Ihdr) (hwf : WFHeader h) :
   obtain ⟨hw1, hw2, hh1, hh2, hil, hpair⟩ := hwf
   have hw1' : 0 < w := hw1
   have hh1' : 0 < hh := hh1
+  have hw2' : w < 2147483648 := hw2
+  have hh2' : hh < 2147483648 := hh2
   have hnl : ¬ (il > 1) := by
     rcases hil with rfl | rfl <;> decide
   have e : printIhdr ⟨w, hh, bd, ct, il⟩ =
@@ -63,9 +66,10 @@ theorem parseIhdr_print (h : Ihdr) (hwf : WFHeader h) :
       :: (hh / 16777216).toUInt8 :: (hh / 65536).toUInt8
       :: (hh / 256).toUInt8 :: hh.toUInt8
       :: bd :: ct :: 0 :: 0 :: il :: [] := rfl
-  rw [e, parseIhdr_step, u32_be32 w hw2, u32_be32 hh hh2]
+  rw [e, parseIhdr_step, u32_be32 w (by omega), u32_be32 hh (by omega)]
   rw [if_neg (by simp : ¬ (([] : List UInt8) ≠ []))]
   rw [if_neg (by omega : ¬ (w = 0 ∨ hh = 0))]
+  rw [if_neg (by omega : ¬ (w ≥ 2147483648 ∨ hh ≥ 2147483648))]
   rw [if_neg (by decide : ¬ ((0 : UInt8) ≠ 0 ∨ (0 : UInt8) ≠ 0))]
   rw [if_neg hnl, if_pos hpair]
 

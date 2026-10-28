@@ -19,10 +19,20 @@ Written by `tests/run_tests.py`. Rerun it to check these numbers.
 - Real PNG files through `header`: 4 of 4 decoded to the fields they were built with
 - Hand-built headers, every colour type and allowed depth: 15 of 15 accepted with their fields
 - Header enumeration, 14 colour types by 9 depths against the allowed table: 126 of 126 agreements
-- Header mutations rejected: 6 of 6
+- Header mutations rejected: 10 of 10
 - Random well formed headers: 200 of 200 decoded to the fields they were built with
 - Random header files through `parse`: 200 of 200 reprinted byte for byte
 - Malformed header requests answered error: 3 of 3
 - Header requests with no codes answered none: 2 of 2
+
+## Axiom check
+
+The output of `#print axioms` for the four named theorems, from `lake env lean Proofs/Verify.lean`:
+
+- 'Png.Proofs.parse_print' depends on axioms: [propext, Quot.sound]
+- 'Png.Proofs.parseIhdr_print' depends on axioms: [propext, Quot.sound]
+- 'Png.Proofs.checkPair_iff' depends on axioms: [propext, Quot.sound]
+- 'Png.Proofs.parseFile_print' depends on axioms: [propext, Quot.sound]
+
 - Named differences: none
 - Failures: 0
