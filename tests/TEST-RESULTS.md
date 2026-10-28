@@ -16,15 +16,23 @@ Written by `tests/run_tests.py`. Rerun it to check these numbers.
 - Mutations of a 1140 byte file (300 sampled single byte flips): 300 inputs, 300 agreements
 - Malformed requests answered error: 12 of 12
 - Requests with no codes answered none: 2 of 2
-- Named differences: none
-- Failures: 0
+- Real PNG files through `header`: 4 of 4 decoded to the fields they were built with
+- Hand-built headers, every colour type and allowed depth: 15 of 15 accepted with their fields
+- Header enumeration, 14 colour types by 9 depths against the allowed table: 126 of 126 agreements
+- Header mutations rejected: 10 of 10
+- Random well formed headers: 200 of 200 decoded to the fields they were built with
+- Random header files through `parse`: 200 of 200 reprinted byte for byte
+- Malformed header requests answered error: 3 of 3
+- Header requests with no codes answered none: 2 of 2
 
 ## Axiom check
 
-Recorded on 2026-10-26 against the head of this pull request, on Lean 4.35.0. The line below is the output printed for `Proofs/Verify.lean` during a clean `lake build` (17 jobs).
+The output of `#print axioms` for the four named theorems, from `lake env lean Proofs/Verify.lean`:
 
-```text
-'Png.Proofs.parse_print' depends on axioms: [propext, Quot.sound]
-```
+- 'Png.Proofs.parse_print' depends on axioms: [propext, Quot.sound]
+- 'Png.Proofs.parseIhdr_print' depends on axioms: [propext, Quot.sound]
+- 'Png.Proofs.checkPair_iff' depends on axioms: [propext, Quot.sound]
+- 'Png.Proofs.parseFile_print' depends on axioms: [propext, Quot.sound]
 
-No other axiom is named, and sorryAx is not named.
+- Named differences: none
+- Failures: 0
