@@ -1,6 +1,6 @@
 # Specification: png
 
-A PNG chunk parser and printer in Lean, with (slice 2) a decoder for the IHDR header. It does not decode pixels, and it does not inflate IDAT data. A reviewer who did not write this specification approves it, together with any statement file a reviewer adds later. No such file exists yet, so nothing here counts toward the verified bar yet.
+A PNG chunk parser and printer in Lean, with (slice 2) a decoder for the IHDR header. It does not decode pixels, and it does not inflate IDAT data. The claims below are stated as Lean theorems in `Spec.lean`. A reviewer who did not write this specification or those statements approves them; no reviewer has yet, so nothing here counts toward the verified bar.
 
 Bytes are `List UInt8` throughout.
 
@@ -80,6 +80,31 @@ Slice 2 adds three proved claims:
 No claim is made that the parser accepts every file the rules above allow, or rejects every file they forbid, beyond what the round trip needs. The test suite checks that behaviour against real PNG files built with Python's zlib and against a strict reading of these rules, and the results record the counts.
 
 The round trip needs no fact about CRC-32 itself: the parser and the printer compute the same function of the same bytes, so a printed file passes its own CRC checks by construction. That the function is the standard CRC-32 rests on the differential tests against Python zlib's `crc32`.
+
+## Properties and their theorems
+
+Each property above names its theorem. The theorems are stated in `Spec.lean` and proved in `Proofs/SpecProofs.lean`, under the same names. `comparator.json` lists all of them.
+
+| Property | Theorem |
+|----------|---------|
+| Parsing the printed form of a well formed chunk list gives the list back | `Spec.parse_print` |
+| Reading the printed bytes of a well formed IHDR header gives the header back | `Spec.parseIhdr_print` |
+| The depth checker agrees with the written out table of allowed (colour type, bit depth) pairs on every byte pair | `Spec.checkPair_iff` |
+| Printing a fully well formed document and reading it back at both layers gives the document back, header included | `Spec.parseFile_print` |
+| A file whose first signature byte is wrong is refused | `Spec.rejects_bad_signature` |
+| A file whose IHDR chunk carries a CRC that does not match its type and data is refused | `Spec.rejects_bad_crc` |
+| A file cut short inside its first chunk is refused | `Spec.rejects_truncated_input` |
+| A file whose first chunk holds 12 data bytes is refused: an IHDR chunk holds 13 | `Spec.rejects_first_chunk_length_12` |
+| A file with a width of zero is refused | `Spec.rejects_zero_width` |
+| A file with a height of zero is refused | `Spec.rejects_zero_height` |
+| A file with a width of 2^31 is refused: the width stays below 2^31 | `Spec.rejects_width_at_cap` |
+| A file with a height of 2^31 is refused: the height stays below 2^31 | `Spec.rejects_height_at_cap` |
+| A file with bit depth 4 on colour type 2 is refused: that colour type allows depths 8 and 16 only | `Spec.rejects_illegal_depth` |
+| A file with colour type 1 is refused: 1 is not a PNG colour type, and allows no bit depth | `Spec.rejects_unknown_colour_type` |
+| A file with an interlace byte of 2 is refused: the byte is 0 or 1 | `Spec.rejects_unknown_interlace` |
+| A file with a compression byte of 1 is refused: the only compression method is 0 | `Spec.rejects_nonzero_compression` |
+| A file with a filter byte of 1 is refused: the only filter method is 0 | `Spec.rejects_nonzero_filter` |
+| The header reader refuses anything but exactly 13 bytes: here a valid header's first 12 bytes | `Spec.rejects_header_wrong_length` |
 
 ## The command-line tool
 
