@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Tests for the Lean PNG chunk parser and printer.
 
-Five parts. Parts 1 to 4 are the slice 1 suite, unchanged.
+Six parts. Parts 1 to 4 are the slice 1 suite, unchanged.
 Part 5 is slice 2: the IHDR header read through the `header`
-request.
+request. Part 6 compares that read with libpng, where libpng is
+installed.
 
 1. Real PNG files built with Python zlib: an IHDR chunk (the
    width, height, bit depth, and colour type are stated per file
@@ -42,11 +43,23 @@ request.
    2^31, a height of 2^31, a width of 2^32 - 1, a height of
    2^32 - 1, a compression byte of 1, a filter byte of 1, an
    interlace byte of 2, a first chunk of length 12) must be
-   rejected. A second IHDR chunk must be rejected by `header`
-   and read by `parse`; an IEND chunk with data is an ordinary
-   chunk at both layers. Random well formed headers are built
-   into whole files and checked through `header` for their
-   fields and through `parse` for a byte for byte reprint.
+   rejected, and a width or height of 2^31 - 1 accepted. A
+   second IHDR chunk must be rejected by `header` and read by
+   `parse`; an IEND chunk with data is an ordinary chunk at both
+   layers. Random well formed headers are built into whole
+   files and checked through `header` for their fields and
+   through `parse` for a byte for byte reprint.
+
+6. The libpng comparison. tests/libpng_header.c is built
+   against the system libpng (skipped, and said so, when there
+   is no C compiler or no libpng). Each file is read by libpng
+   and by `header`, and the answers must agree field for field,
+   or both refuse, except in the named differences listed in
+   LIBPNG_NAMED. The files: the real files, the colour type and
+   depth grid, every allowed pair with and without Adam7 at
+   three sizes (with an all zero image libpng decodes), the
+   header rule cases, 150 random well formed headers, and the
+   chunk order cases.
 
     python3 tests/run_tests.py [--seed N] [--count N]
 
@@ -60,6 +73,7 @@ import argparse
 import json
 import random
 import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -156,8 +170,13 @@ def run_tool(lines, timeout=TIMEOUT):
     return answers, problem
 
 
+ASKED = [0]
+
+
 def ask_all(lines):
-    """Chunked run_tool. Answers align with lines, or None entries."""
+    """Chunked run_tool. Answers align with lines, or None entries.
+    Every request counts toward the record's Inputs."""
+    ASKED[0] += len(lines)
     answers = []
     problems = []
     for i in range(0, len(lines), CHUNK):
@@ -784,6 +803,252 @@ def run_header_random(seed, count=200):
     return lines, failures
 
 
+def run_header_bounds():
+    """The largest width and height the rules allow, 2^31 - 1, are
+    accepted with their fields: the cap is exact on both sides."""
+    top = 2**31 - 1
+    cases = [(top, 3, 8, 6, 0), (4, top, 8, 6, 0), (top, top, 8, 0, 1)]
+    lines = []
+    failures = []
+    answers, problems = ask_all(
+        [header_request(header_file(ihdr_full(w, h, d, t, interlace=i))) for (w, h, d, t, i) in cases]
+    )
+    for problem in problems:
+        failures.append(f"header bounds: tool problem: {problem}")
+    agree = 0
+    for fields, ans in zip(cases, answers):
+        want = header_line(*fields)
+        if ans == want:
+            agree += 1
+        else:
+            failures.append(f"header bound {fields}: want {want!r}, got {ans!r}")
+    lines.append(f"Headers at the cap, width or height 2^31 - 1, accepted: {agree} of {len(cases)}")
+    return lines, failures
+
+
+# ---------------------------------------------------------------- the
+# libpng oracle for the header read. tests/libpng_header.c is built
+# against the system libpng, when there is one, and each file below
+# is read by libpng and by the Lean tool's `header` request. The
+# answers must agree, field for field, except in the named
+# differences listed here, each of which is a rule this reader
+# leaves out on purpose (SPEC.md says so) or a place libpng is more
+# lenient than the PNG specification.
+
+LIBPNG_SRC = ROOT / "tests" / "libpng_header.c"
+LIBPNG_EXE = ROOT / ".lake" / "oracle" / "libpng_header"
+
+CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
+ADAM7 = [(0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2)]
+
+# Named differences: case name -> (what libpng answers, why).
+LIBPNG_NAMED = {
+    "indexed colour with no PLTE chunk": (
+        "libpng refuses the file (no PLTE before IDAT); this reader accepts it",
+        "which chunks must appear between IHDR and IEND is not checked (SPEC.md, Chunks)",
+    ),
+    "an IEND chunk with data before IDAT, a real IEND at the end": (
+        "libpng refuses the file (IEND out of place); this reader accepts it",
+        "an IEND chunk that carries data is an ordinary chunk here (SPEC.md, Chunks)",
+    ),
+    "an IEND chunk with data as the last chunk": (
+        "libpng reads the file, with a warning; this reader refuses it",
+        "the file has no IEND chunk with empty data, which the PNG specification requires (SPEC.md, Chunks)",
+    ),
+}
+
+
+def build_libpng():
+    """Build the libpng oracle. Returns (version text, None) or
+    (None, the reason it could not be built)."""
+    cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
+    if not cc:
+        return None, "no C compiler"
+    flags = ["-lpng16"]
+    if shutil.which("pkg-config"):
+        pc = subprocess.run(
+            ["pkg-config", "--cflags", "--libs", "libpng"], capture_output=True, text=True
+        )
+        if pc.returncode == 0 and pc.stdout.split():
+            flags = pc.stdout.split()
+    LIBPNG_EXE.parent.mkdir(parents=True, exist_ok=True)
+    build = subprocess.run(
+        [cc, "-O1", "-o", str(LIBPNG_EXE), str(LIBPNG_SRC), *flags],
+        capture_output=True,
+        text=True,
+    )
+    if build.returncode != 0:
+        tail = " / ".join(build.stderr.strip().splitlines()[-2:])
+        return None, f"libpng oracle did not build: {tail}"
+    run = subprocess.run([str(LIBPNG_EXE)], input="version\n", capture_output=True, text=True)
+    if run.returncode != 0 or not run.stdout.startswith("ok:"):
+        return None, "libpng oracle did not run"
+    return run.stdout[3:].strip(), None
+
+
+def ask_libpng(requests):
+    run = subprocess.run(
+        [str(LIBPNG_EXE)],
+        input="".join(r + "\n" for r in requests),
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT,
+    )
+    answers = run.stdout.split("\n")
+    if answers and answers[-1] == "":
+        answers.pop()
+    if run.returncode != 0 or len(answers) != len(requests):
+        return None
+    return answers
+
+
+def raw_image(width, height, depth, colour_type, interlace):
+    """Filtered scanlines of an all zero image: a filter byte of 0,
+    then zero pixels, for each row of each Adam7 pass when the
+    image is interlaced."""
+    bits = CHANNELS.get(colour_type, 1) * depth
+
+    def rows(w, h):
+        return (b"\x00" * (1 + (w * bits + 7) // 8)) * h
+
+    if interlace != 1:
+        return rows(width, height)
+    out = b""
+    for x0, y0, dx, dy in ADAM7:
+        pw = (width - x0 + dx - 1) // dx if width > x0 else 0
+        ph = (height - y0 + dy - 1) // dy if height > y0 else 0
+        if pw and ph:
+            out += rows(pw, ph)
+    return out
+
+
+def oracle_png(width, height, depth, colour_type, interlace=0, comp=0, filt=0, plte=True, raw=None):
+    """A whole file whose image data decodes, for colour types and
+    depths the table allows: indexed colour gets a one entry PLTE
+    chunk, and the IDAT chunk holds an all zero image."""
+    if raw is None:
+        if colour_type in CHANNELS and depth in ALLOWED.get(colour_type, []):
+            raw = raw_image(width, height, depth, colour_type, interlace)
+        else:
+            raw = b"\x00"
+    parts = [SIG, make_chunk(b"IHDR", ihdr_full(width, height, depth, colour_type, comp, filt, interlace))]
+    if colour_type == 3 and plte:
+        parts.append(make_chunk(b"PLTE", b"\x00\x00\x00"))
+    parts.append(make_chunk(b"IDAT", zlib.compress(raw)))
+    parts.append(make_chunk(b"IEND", b""))
+    return b"".join(parts)
+
+
+def libpng_cases(seed):
+    """(name, mode, file) for the libpng comparison. `full` reads the
+    whole file and decodes the image; `info` reads up to IDAT and is
+    used where the image would be too large to decode."""
+    cases = []
+    for name, data in real_files(seed):
+        cases.append((f"real file: {name}", "full", data))
+    for t in list(range(13)) + [255]:
+        for d in [0, 1, 2, 3, 4, 5, 8, 16, 255]:
+            cases.append((f"grid: colour type {t}, depth {d}", "full", oracle_png(3, 2, d, t)))
+    for t in sorted(ALLOWED):
+        for d in ALLOWED[t]:
+            for i in (0, 1):
+                for w, h in ((1, 1), (3, 2), (9, 9)):
+                    cases.append((f"allowed pair: {w}x{h} d{d} t{t} i{i}", "full", oracle_png(w, h, d, t, i)))
+    top = 2**31 - 1
+    z = b"\x00"  # read up to IDAT only, so the image data is not looked at
+    for name, data in [
+        ("a width of zero", oracle_png(0, 3, 8, 6, raw=z)),
+        ("a height of zero", oracle_png(4, 0, 8, 6, raw=z)),
+        ("a width of 2^31", oracle_png(2**31, 3, 8, 6, raw=z)),
+        ("a height of 2^31", oracle_png(4, 2**31, 8, 6, raw=z)),
+        ("a width of 2^32 - 1", oracle_png(2**32 - 1, 3, 8, 6, raw=z)),
+        ("a height of 2^32 - 1", oracle_png(4, 2**32 - 1, 8, 6, raw=z)),
+        ("a compression byte of 1", oracle_png(4, 3, 8, 6, comp=1, raw=z)),
+        ("a filter byte of 1", oracle_png(4, 3, 8, 6, filt=1, raw=z)),
+        ("an interlace byte of 2", oracle_png(4, 3, 8, 6, interlace=2, raw=z)),
+        ("a width of 2^31 - 1", oracle_png(top, 3, 8, 6, raw=z)),
+        ("a height of 2^31 - 1", oracle_png(4, top, 8, 6, raw=z)),
+        ("a width and height of 2^31 - 1, Adam7", oracle_png(top, top, 8, 0, 1, raw=z)),
+    ]:
+        cases.append((f"header rule: {name}", "info", data))
+    for name, cut in [("an IHDR chunk of 12 bytes", 12), ("an IHDR chunk of 14 bytes", 14)]:
+        body = (ihdr_full(4, 3, 8, 6) + b"\x00")[:cut]
+        data = (
+            SIG
+            + make_chunk(b"IHDR", body)
+            + make_chunk(b"IDAT", zlib.compress(raw_image(4, 3, 8, 6, 0)))
+            + make_chunk(b"IEND", b"")
+        )
+        cases.append((f"header rule: {name}", "info", data))
+    rng = random.Random(seed + 13)
+    for k in range(150):
+        t = rng.choice(sorted(ALLOWED))
+        d = rng.choice(ALLOWED[t])
+        w, h, i = rng.randrange(1, 40), rng.randrange(1, 40), rng.randrange(0, 2)
+        cases.append((f"random: {w}x{h} d{d} t{t} i{i}", "full", oracle_png(w, h, d, t, i)))
+    ihdr1 = make_chunk(b"IHDR", ihdr_full(1, 1, 8, 2))
+    ihdr2 = make_chunk(b"IHDR", ihdr_full(2, 2, 8, 2))
+    idat = make_chunk(b"IDAT", zlib.compress(raw_image(1, 1, 8, 2, 0)))
+    iend = make_chunk(b"IEND", b"")
+    iend_data = make_chunk(b"IEND", b"\x01\x02")
+    cases += [
+        ("a second IHDR right after the first", "full", SIG + ihdr1 + ihdr2 + idat + iend),
+        ("a second IHDR after IDAT", "full", SIG + ihdr1 + idat + ihdr2 + iend),
+        ("an IEND chunk with data before IDAT, a real IEND at the end", "full", SIG + ihdr1 + iend_data + idat + iend),
+        ("an IEND chunk with data as the last chunk", "full", SIG + ihdr1 + idat + iend_data),
+        ("indexed colour with no PLTE chunk", "full", oracle_png(3, 2, 8, 3, plte=False)),
+    ]
+    return cases
+
+
+def lean_header_text(ans):
+    """The Lean tool's `header` answer as the same text libpng's
+    answer uses: `ok:` and the fields, or `none`."""
+    if ans is None or not ans.startswith("ok:"):
+        return ans
+    try:
+        return "ok:" + bytes(int(c) for c in ans[3:].split(",")).decode("ascii")
+    except ValueError:
+        return ans
+
+
+def run_libpng(seed):
+    """Returns (lines, failures, inputs, named): the record lines,
+    the failures, the count of files compared, and the named
+    differences met, with their counts."""
+    version, why = build_libpng()
+    if version is None:
+        return [f"libpng header oracle: skipped, {why}"], [], 0, {}
+    cases = libpng_cases(seed)
+    lp = ask_libpng([f"{mode} {data.hex()}" for _, mode, data in cases])
+    if lp is None:
+        return [f"libpng header oracle ({version}): did not answer"], ["libpng oracle did not answer"], 0, {}
+    lean, problems = ask_all([header_request(data) for _, _, data in cases])
+    failures = [f"libpng comparison: tool problem: {p}" for p in problems]
+    agree = 0
+    named = {}
+    for (name, mode, _), want, got in zip(cases, lp, lean):
+        theirs = want.split(" warnings:")[0]
+        ours = lean_header_text(got)
+        same = (theirs.startswith("ok:") and ours == theirs) or (
+            theirs.startswith("none:") and ours == "none"
+        )
+        if same:
+            agree += 1
+        elif name in LIBPNG_NAMED:
+            named[name] = named.get(name, 0) + 1
+        else:
+            failures.append(f"libpng comparison {name} ({mode}): libpng {want!r}, this reader {ours!r}")
+    lines = [
+        f"libpng header oracle ({version}, `tests/libpng_header.c`): {len(cases)} files, "
+        f"{agree} agreements, {sum(named.values())} named differences"
+    ]
+    for name in LIBPNG_NAMED:
+        if name in [c[0] for c in cases] and name not in named:
+            failures.append(f"libpng comparison {name}: the named difference did not occur")
+    return lines, failures, len(cases), named
+
+
 def run_header_malformed():
     lines = []
     failures = []
@@ -916,12 +1181,20 @@ def main():
         run_header_grid(),
         run_header_mutations(),
         run_header_chunk_order(),
+        run_header_bounds(),
         run_header_random(args.seed),
         run_header_malformed(),
     ):
         lines, failures = part
         all_lines += lines
         all_failures += failures
+    # The record's Inputs: every request of the sections above. The
+    # libpng comparison below runs only where libpng is installed, so
+    # it is counted on its own line, and a run without libpng records
+    # the same Inputs.
+    inputs = ASKED[0]
+    libpng_lines, libpng_failures, libpng_inputs, named = run_libpng(args.seed)
+    all_failures += libpng_failures
 
     lean_version = subprocess.run(
         ["lake", "env", "lean", "--version"],
@@ -962,12 +1235,38 @@ def main():
     out.append("")
     out.append(
         f"- Oracle: Python {sys.version.split()[0]} `zlib` (crc32 and compress), "
-        "plus a strict reading of the plan rules written in the harness"
+        "plus a strict reading of the plan rules written in the harness; "
+        "for the header read, also libpng where it is installed (below)"
     )
     out.append(f"- Lean: {lean_version}")
     out.append(f"- Seed: {args.seed}")
+    out.append(f"- Inputs: {inputs}")
+    out.append(
+        "- Inputs counts every request of the sections below, up to the libpng "
+        "comparison, which is counted on its own line"
+    )
     for line in all_lines:
         out.append(f"- {line}")
+    out.append("")
+    out.append("## libpng comparison of the header read")
+    out.append("")
+    out.append(
+        "Each file is read by libpng (`tests/libpng_header.c`, built against the "
+        "system libpng, with its default width and height limits raised to "
+        "2^31 - 1) and by the tool's `header` request, and the two answers must "
+        "agree: the same fields, or both refuse. The files: the real files, the "
+        "colour type and depth grid, every allowed pair with and without Adam7 at "
+        "three sizes, the header rule cases, 150 random well formed headers, and "
+        "the chunk order cases. Whole files are decoded by libpng, image and all, "
+        "except for the header rule cases, which libpng reads up to IDAT."
+    )
+    out.append("")
+    for line in libpng_lines:
+        out.append(f"- {line}")
+    out.append(f"- Named differences: {sum(named.values())}")
+    for name, count in named.items():
+        what, why = LIBPNG_NAMED[name]
+        out.append(f"- Named difference, {name} ({count}): {what}; {why}")
     out.append("")
     out.append("## Axiom check")
     out.append("")
@@ -984,7 +1283,8 @@ def main():
     for line in axiom_lines:
         out.append(f"- {line}")
     out.append("")
-    out.append("- Named differences: none")
+    out.append("## Outcome")
+    out.append("")
     out.append(f"- Failures: {len(all_failures)}")
     for failure in all_failures[:50]:
         out.append(f"- FAILURE: {failure}")

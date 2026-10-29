@@ -1,6 +1,6 @@
 # png: a PNG chunk parser and printer, with proved round trips
 
-Status: in-progress
+Status: in progress. No reviewer has approved the specification yet.
 
 A parser and printer for the chunk layer of PNG files, in Lean,
 following the PNG specification. It reads the signature, then
@@ -47,8 +47,9 @@ fields. See `SPEC.md` for the full protocol.
 
 `python3 tests/run_tests.py` rebuilds the tool, runs the real
 files, the hand built cases, the differential runs, and the
-header sections, and writes the outcome to
-`tests/TEST-RESULTS.md`.
+header sections, compares the header read with libpng where a
+C compiler and libpng are installed (`tests/libpng_header.c`),
+and writes the outcome to `tests/TEST-RESULTS.md`.
 
 ## What is proved
 
@@ -143,10 +144,11 @@ about.
 
 ## What is not proved
 
-- That the well formedness rules (`WF`, `WFHeader`, `WFFull`, and the table of allowed pairs) are the PNG specification's rules. The proofs tie each reader to its rule exactly, in both directions, but that the rule says what the PNG specification says is a reading: `SPEC.md` states it in words, and the tests compare the readers against a strict oracle written in the harness from those rules.
+- That the well formedness rules (`WF`, `WFHeader`, `WFFull`, and the table of allowed pairs) are the PNG specification's rules. The proofs tie each reader to its rule exactly, in both directions, but that the rule says what the PNG specification says is a reading: `SPEC.md` states it in words, and the tests compare the readers against a strict oracle written in the harness from those rules, and the header read against libpng, file by file. Where libpng and this reader differ, the test record names each difference and the rule behind it.
 - That the CRC-32 here is the standard one. The round trip needs no such fact, since the parser and the printer compute the same function. The differential tests against Python zlib's `crc32` are what tie this function to the standard.
 - Anything inside a chunk's data past the IHDR header. The data of every other chunk type is opaque here. IDAT data is not inflated. No pixel is ever decoded.
-- Chunk order past the first and last, except for IHDR. Which types may appear, how many times, and in what order between IHDR and IEND is not checked, with one exception: the file level read (`header`) refuses a second IHDR chunk. The chunk layer (`parse`) does not, and reads it as an ordinary chunk. A chunk of type IEND that carries data is read as an ordinary chunk at both layers.
+- Chunk order past the first and last, except for IHDR. Which types may appear, how many times, and in what order between IHDR and IEND is not checked, with one exception: the file level read (`header`) refuses a second IHDR chunk. The chunk layer (`parse`) does not, and reads it as an ordinary chunk. So an indexed colour file with no PLTE chunk is accepted, where libpng refuses it.
+- A chunk of type IEND that carries data. The PNG specification gives IEND no data, but this reader reads such a chunk as an ordinary chunk, at both layers: the file is accepted when an IEND chunk with no data ends it, and refused when none does. libpng refuses such a chunk before IDAT, and reads a file that ends in one, with a warning. `SPEC.md` states this reading, and the test record names both differences.
 
 ## What you must trust
 
@@ -170,7 +172,9 @@ about.
   reading, pinned in `SPEC.md` where the PNG specification
   leaves a choice open.
 - Python's standard library, including zlib, as the oracle
-  in the tests. The results file names the versions used.
+  in the tests, and libpng as the oracle for the header read
+  where it is installed. The results file names the versions
+  used.
 - The line handling in `Main.lean` (splitting a request
   line, reading decimal codes). The tests drive it, and no
   proof covers it.
@@ -187,10 +191,13 @@ about.
    and every other kernel shipped with Lean.
 2. `python3 tests/run_tests.py`: the real files, the hand
    built cases, the differential runs against the oracle,
-   the mutations, and the header sections, with counts and
-   any failures written to `tests/TEST-RESULTS.md`.
+   the mutations, the header sections, and the libpng
+   comparison of the header read, with counts, named
+   differences, and any failures written to
+   `tests/TEST-RESULTS.md`.
 3. `lake build`: the library, the proofs, and the tool build
    clean, and `lake env lean Proofs/Verify.lean` prints the
-   axiom list for the headline theorems.
+   axiom list for the headline theorems and for every theorem
+   `comparator.json` names.
 4. Read `SPEC.md` against the PNG specification and check
    the pinned readings are the ones you want.
