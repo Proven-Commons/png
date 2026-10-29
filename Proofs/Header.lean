@@ -88,7 +88,7 @@ theorem pairAllowed_iff : ∀ n m : Nat,
     simp [allowedPairs]
   · have hdep : allowedDepths n = [] := by
       unfold allowedDepths
-      rw [if_neg h0, if_neg h2, if_neg h3, if_neg h4, if_neg h6]
+      rw [ite_eq_right h0, ite_eq_right h2, ite_eq_right h3, ite_eq_right h4, ite_eq_right h6]
     simp only [pairAllowed, decide_eq_true_eq, hdep]
     simp [allowedPairs, h0, h2, h3, h4, h6]
 
@@ -118,11 +118,11 @@ theorem parseIhdr_print (h : Ihdr) (hwf : WFHeader h) :
       :: (hh / 256).toUInt8 :: hh.toUInt8
       :: bd :: ct :: 0 :: 0 :: il :: [] := rfl
   rw [e, parseIhdr_step, u32_be32 w (by omega), u32_be32 hh (by omega)]
-  rw [if_neg (by simp : ¬ (([] : List UInt8) ≠ []))]
-  rw [if_neg (by omega : ¬ (w = 0 ∨ hh = 0))]
-  rw [if_neg (by omega : ¬ (w ≥ 2147483648 ∨ hh ≥ 2147483648))]
-  rw [if_neg (by decide : ¬ ((0 : UInt8) ≠ 0 ∨ (0 : UInt8) ≠ 0))]
-  rw [if_neg hnl, if_pos ((checkPair_iff ct bd).mpr hpair)]
+  rw [ite_eq_right (by simp : ¬ (([] : List UInt8) ≠ []))]
+  rw [ite_eq_right (by omega : ¬ (w = 0 ∨ hh = 0))]
+  rw [ite_eq_right (by omega : ¬ (w ≥ 2147483648 ∨ hh ≥ 2147483648))]
+  rw [ite_eq_right (by decide : ¬ ((0 : UInt8) ≠ 0 ∨ (0 : UInt8) ≠ 0))]
+  rw [ite_eq_right hnl, ite_eq_left ((checkPair_iff ct bd).mpr hpair)]
 
 /-- Four bytes read big endian and printed again are the same
     four bytes. -/
