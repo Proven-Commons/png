@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Tests for the Lean PNG chunk parser and printer.
 
-Six parts. Parts 1 to 4 are the slice 1 suite, unchanged.
+Seven parts. Parts 1 to 4 are the slice 1 suite, unchanged.
 Part 5 is slice 2: the IHDR header read through the `header`
-request. Part 6 compares that read with libpng, where libpng is
+request. Part 6 checks the accepted inputs stated in Spec.lean.
+Part 7 compares the header read with libpng, where libpng is
 installed.
 
 1. Real PNG files built with Python zlib: an IHDR chunk (the
@@ -50,7 +51,17 @@ installed.
    files and checked through `header` for their fields and
    through `parse` for a byte for byte reprint.
 
-6. The libpng comparison. tests/libpng_header.c is built
+6. The accepted inputs stated in Spec.lean
+   (Spec.reads_real_file_header, a whole file, and
+   Spec.reads_header_1920x1080, 13 header bytes, wrapped in a
+   file with an all zero image), read from that file. The
+   stated header must match the harness's own big endian
+   reading of the bytes, the image data must inflate to the
+   size that header gives, the tool's `header` answer must be
+   the stated header, and so must libpng's, decoding the whole
+   file, where libpng is installed.
+
+7. The libpng comparison. tests/libpng_header.c is built
    against the system libpng (skipped, and said so, when there
    is no C compiler or no libpng). Each file is read by libpng
    and by `header`, and the answers must agree field for field,
@@ -858,9 +869,18 @@ LIBPNG_NAMED = {
 }
 
 
+LIBPNG_BUILT = []
+
+
 def build_libpng():
-    """Build the libpng oracle. Returns (version text, None) or
-    (None, the reason it could not be built)."""
+    """Build the libpng oracle, once per run. Returns (version text,
+    None) or (None, the reason it could not be built)."""
+    if not LIBPNG_BUILT:
+        LIBPNG_BUILT.append(build_libpng_once())
+    return LIBPNG_BUILT[0]
+
+
+def build_libpng_once():
     cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
     if not cc:
         return None, "no C compiler"
@@ -1075,6 +1095,149 @@ def run_header_malformed():
 
 
 # ---------------------------------------------------------------- the
+# accepted inputs stated in Spec.lean. Two statements there give an
+# input and the header the reader returns for it:
+# Spec.reads_real_file_header (a whole file) and
+# Spec.reads_header_1920x1080 (13 header bytes). The bytes and the
+# fields are read from Spec.lean itself, so the check is of the
+# statements as written, and each is checked three ways: the
+# harness's own reading of the bytes (big endian width and height,
+# zlib for the CRCs and the image data), the tool's `header` answer,
+# and libpng's answer where libpng is installed.
+
+SPEC_LEAN = ROOT / "Spec.lean"
+
+
+def lean_bytes(text):
+    return bytes(int(x) for x in text.replace("\n", " ").split(","))
+
+
+HEADER_FIELDS = ("width", "height", "bitDepth", "colorType", "interlace")
+
+
+def lean_fields(text):
+    """The header a statement gives, written as a structure
+    instance with its five fields named, as (width, height, bit
+    depth, colour type, interlace)."""
+    got = dict(
+        (k, int(v)) for k, v in re.findall(r"(\w+)\s*:=\s*([0-9]+)", text)
+    )
+    if sorted(got) != sorted(HEADER_FIELDS):
+        return None
+    return tuple(got[k] for k in HEADER_FIELDS)
+
+
+def spec_examples():
+    """(theorem, file, the 13 header bytes, the stated fields), read
+    from Spec.lean. The header only statement is wrapped in a whole
+    file: its 13 bytes as the IHDR data, an IDAT chunk holding an
+    all zero image of that size, and IEND."""
+    src = SPEC_LEAN.read_text(encoding="utf-8")
+    found = []
+    m = re.search(
+        r"theorem Spec\.reads_real_file_header :\s*\(parseFile \(\[([0-9,\s]*)\]\s*"
+        r":\s*List UInt8\)\)\.map Prod\.fst =\s*some \{([^}]*)\}",
+        src,
+    )
+    if m and lean_fields(m.group(2)):
+        data = lean_bytes(m.group(1))
+        found.append(("Spec.reads_real_file_header", data, data[16:29], lean_fields(m.group(2))))
+    m = re.search(
+        r"theorem Spec\.reads_header_1920x1080 :\s*parseIhdr \(\[([0-9,\s]*)\]\s*"
+        r":\s*List UInt8\) =\s*some \{([^}]*)\}",
+        src,
+    )
+    if m and lean_fields(m.group(2)):
+        ihdr = lean_bytes(m.group(1))
+        w, h, d, t, i = lean_fields(m.group(2))
+        data = (
+            SIG
+            + make_chunk(b"IHDR", ihdr)
+            + make_chunk(b"IDAT", zlib.compress(raw_image(w, h, d, t, i)))
+            + make_chunk(b"IEND", b"")
+        )
+        found.append(("Spec.reads_header_1920x1080", data, ihdr, (w, h, d, t, i)))
+    return found
+
+
+def own_reading(data, ihdr, fields):
+    """The harness's own reading of a stated input: None when it
+    agrees with the stated fields, else what is wrong."""
+    w, h, d, t, i = fields
+    if len(ihdr) != 13:
+        return f"the header is {len(ihdr)} bytes, not 13"
+    got = struct.unpack(">IIBBBBB", ihdr)
+    if got != (w, h, d, t, 0, 0, i):
+        return f"the 13 bytes read big endian are {got}, not {(w, h, d, t, 0, 0, i)}"
+    chunks = oracle_parse(data)
+    if chunks is None:
+        return "the strict oracle refuses the file"
+    if chunks[0] != (b"IHDR", ihdr):
+        return "the file's IHDR data is not the stated 13 bytes"
+    image = zlib.decompress(b"".join(c for typ, c in chunks if typ == b"IDAT"))
+    want = len(raw_image(w, h, d, t, i))
+    if len(image) != want:
+        return f"the image data inflates to {len(image)} bytes, not {want}"
+    return None
+
+
+def run_spec_examples():
+    lines = []
+    failures = []
+    cases = spec_examples()
+    if len(cases) != 2:
+        failures.append(
+            f"Spec.lean accepted inputs: found {len(cases)} of the 2 statements; "
+            "the harness could not read them"
+        )
+    own_ok = 0
+    for name, data, ihdr, fields in cases:
+        wrong = own_reading(data, ihdr, fields)
+        if wrong is None:
+            own_ok += 1
+        else:
+            failures.append(f"{name}: {wrong}")
+    lines.append(
+        f"Accepted inputs stated in Spec.lean, read from that file: {own_ok} of "
+        f"{len(cases)} agree with the harness's own reading of the bytes"
+    )
+    answers, problems = ask_all([header_request(data) for _, data, _, _ in cases])
+    failures += [f"Spec.lean accepted inputs: tool problem: {p}" for p in problems]
+    tool_ok = 0
+    for (name, _, _, fields), ans in zip(cases, answers):
+        want = header_line(*fields)
+        if ans == want:
+            tool_ok += 1
+        else:
+            failures.append(f"{name} through `header`: want {want!r}, got {ans!r}")
+    lines.append(
+        f"Accepted inputs stated in Spec.lean, through `header`: {tool_ok} of "
+        f"{len(cases)} answered with the stated header"
+    )
+    version, why = build_libpng()
+    if version is None:
+        lines.append(f"Accepted inputs stated in Spec.lean, through libpng: skipped, {why}")
+        return lines, failures
+    lp = ask_libpng([f"full {data.hex()}" for _, data, _, _ in cases])
+    if lp is None:
+        failures.append("Spec.lean accepted inputs: the libpng oracle did not answer")
+        return lines, failures
+    lp_ok = 0
+    for (name, _, _, fields), got in zip(cases, lp):
+        w, h, d, t, i = fields
+        want = f"ok:{w}x{h} d{d} t{t} i{i}"
+        if got.split(" warnings:")[0] == want:
+            lp_ok += 1
+        else:
+            failures.append(f"{name} through libpng: want {want!r}, got {got!r}")
+    lines.append(
+        f"Accepted inputs stated in Spec.lean, through libpng ({version}), "
+        f"decoded in full: {lp_ok} of {len(cases)} read with the stated header"
+    )
+    return lines, failures
+
+
+# ---------------------------------------------------------------- the
 # axiom check. Proofs/Verify.lean prints `#print axioms` for the
 # headline theorems in Png.Proofs and for every theorem
 # comparator.json names. Each must have its line, and each may
@@ -1091,6 +1254,10 @@ HEADLINE = [
     "Png.Proofs.parse_sound",
     "Png.Proofs.parseIhdr_sound",
     "Png.Proofs.parseFile_sound",
+    "Png.Proofs.print_layout",
+    "Png.Proofs.printIhdr_layout",
+    "Png.Proofs.isLetter_iff",
+    "Png.Proofs.isIEND_iff",
 ]
 
 
@@ -1184,6 +1351,7 @@ def main():
         run_header_bounds(),
         run_header_random(args.seed),
         run_header_malformed(),
+        run_spec_examples(),
     ):
         lines, failures = part
         all_lines += lines

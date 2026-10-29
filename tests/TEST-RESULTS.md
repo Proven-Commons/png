@@ -5,7 +5,7 @@ Written by `tests/run_tests.py`. Rerun it to check these numbers.
 - Oracle: Python 3.13.17 `zlib` (crc32 and compress), plus a strict reading of the plan rules written in the harness; for the header read, also libpng where it is installed (below)
 - Lean: Lean (version 4.35.0, x86_64-unknown-linux-gnu, commit eb6cafb7290e8bd5f2937522d8d804f58f02bafc, Release)
 - Seed: 20261026
-- Inputs: 1483
+- Inputs: 1485
 - Inputs counts every request of the sections below, up to the libpng comparison, which is counted on its own line
 - Real PNG files (zlib built): 4 of 4 accepted and reprinted byte for byte
 - Real PNG file: 1x1, bit depth 8, colour type 2 (RGB), 69 bytes
@@ -29,6 +29,9 @@ Written by `tests/run_tests.py`. Rerun it to check these numbers.
 - Random header files through `parse`: 200 of 200 reprinted byte for byte
 - Malformed header requests answered error: 3 of 3
 - Header requests with no codes answered none: 2 of 2
+- Accepted inputs stated in Spec.lean, read from that file: 2 of 2 agree with the harness's own reading of the bytes
+- Accepted inputs stated in Spec.lean, through `header`: 2 of 2 answered with the stated header
+- Accepted inputs stated in Spec.lean, through libpng (built 1.6.43, running 1.6.43), decoded in full: 2 of 2 read with the stated header
 
 ## libpng comparison of the header read
 
@@ -42,7 +45,7 @@ Each file is read by libpng (`tests/libpng_header.c`, built against the system l
 
 ## Axiom check
 
-The output of `#print axioms` for the 7 headline theorems and the 22 theorems `comparator.json` names, from `lake env lean Proofs/Verify.lean`. The harness reads the names, and fails on any axiom but `propext`, `Classical.choice`, `Quot.sound`. A self-test on planted output (a `sorryAx`, an axiom of a proof's own, a missing line) runs first.
+The output of `#print axioms` for the 11 headline theorems and the 29 theorems `comparator.json` names, from `lake env lean Proofs/Verify.lean`. The harness reads the names, and fails on any axiom but `propext`, `Classical.choice`, `Quot.sound`. A self-test on planted output (a `sorryAx`, an axiom of a proof's own, a missing line) runs first.
 
 - 'Png.Proofs.parse_print' depends on axioms: [propext, Quot.sound]
 - 'Png.Proofs.parseIhdr_print' depends on axioms: [propext, Quot.sound]
@@ -51,6 +54,10 @@ The output of `#print axioms` for the 7 headline theorems and the 22 theorems `c
 - 'Png.Proofs.parse_sound' depends on axioms: [propext, Quot.sound]
 - 'Png.Proofs.parseIhdr_sound' depends on axioms: [propext, Quot.sound]
 - 'Png.Proofs.parseFile_sound' depends on axioms: [propext, Quot.sound]
+- 'Png.Proofs.print_layout' depends on axioms: [propext, Quot.sound]
+- 'Png.Proofs.printIhdr_layout' depends on axioms: [propext]
+- 'Png.Proofs.isLetter_iff' depends on axioms: [propext]
+- 'Png.Proofs.isIEND_iff' depends on axioms: [propext]
 - 'Spec.parse_print' depends on axioms: [propext, Quot.sound]
 - 'Spec.parseIhdr_print' depends on axioms: [propext, Quot.sound]
 - 'Spec.checkPair_iff' depends on axioms: [propext, Quot.sound]
@@ -58,6 +65,13 @@ The output of `#print axioms` for the 7 headline theorems and the 22 theorems `c
 - 'Spec.parse_sound' depends on axioms: [propext, Quot.sound]
 - 'Spec.parseIhdr_sound' depends on axioms: [propext, Quot.sound]
 - 'Spec.parseFile_sound' depends on axioms: [propext, Quot.sound]
+- 'Spec.print_layout' depends on axioms: [propext, Quot.sound]
+- 'Spec.printIhdr_layout' depends on axioms: [propext]
+- 'Spec.isLetter_iff' depends on axioms: [propext]
+- 'Spec.ihdrType_eq' depends on axioms: []
+- 'Spec.isIEND_iff' depends on axioms: [propext]
+- 'Spec.reads_real_file_header' depends on axioms: [propext, Quot.sound]
+- 'Spec.reads_header_1920x1080' depends on axioms: [propext, Quot.sound]
 - 'Spec.rejects_bad_signature' depends on axioms: [propext, Quot.sound]
 - 'Spec.rejects_bad_crc' depends on axioms: [propext, Quot.sound]
 - 'Spec.rejects_truncated_input' depends on axioms: [propext, Quot.sound]

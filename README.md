@@ -47,8 +47,9 @@ fields. See `SPEC.md` for the full protocol.
 
 `python3 tests/run_tests.py` rebuilds the tool, runs the real
 files, the hand built cases, the differential runs, and the
-header sections, compares the header read with libpng where a
-C compiler and libpng are installed (`tests/libpng_header.c`),
+header sections, checks the two accepted inputs stated in
+`Spec.lean`, compares the header read with libpng where a C
+compiler and libpng are installed (`tests/libpng_header.c`),
 and writes the outcome to `tests/TEST-RESULTS.md`.
 
 ## What is proved
@@ -67,6 +68,13 @@ same names. `comparator.json` lists all of them.
 | A file the chunk parser accepts is the printed form of the chunk list it returns, and that list is well formed. | `Spec.parse_sound` |
 | A header the header reader accepts is well formed, and the bytes it read are its printed form. So a header that breaks any header rule is refused. | `Spec.parseIhdr_sound` |
 | A file the file level read accepts is the printed form of the chunk list it returns, and that list is fully well formed with the header the read returns. So a file that breaks any rule of either layer, or holds a second IHDR chunk, is refused. | `Spec.parseFile_sound` |
+| The chunk printer writes the eight signature bytes, then each chunk as its data length in four bytes big endian, its four type bytes, its data, and the CRC-32 of its type bytes and data in four bytes big endian. | `Spec.print_layout` |
+| The header printer writes the width in four bytes big endian, then the height in four bytes big endian, then the bit depth, the colour type, a compression byte of zero, a filter byte of zero, and the interlace byte. | `Spec.printIhdr_layout` |
+| The letter test the chunk rules use holds of the ASCII letters A to Z and a to z, and of no other byte. | `Spec.isLetter_iff` |
+| The type bytes required of the first chunk are I, H, D, R. | `Spec.ihdrType_eq` |
+| The IEND chunk, where reading stops, is a chunk with type bytes I, E, N, D and no data. | `Spec.isIEND_iff` |
+| A real 4 by 3 PNG file (an IHDR, an IDAT with zlib compressed pixels, and IEND) is read with its own header: width 4, height 3, bit depth 8, colour type 6, no interlace. | `Spec.reads_real_file_header` |
+| The 13 bytes of a 1920 by 1080 header are read as width 1920 and height 1080, bit depth 8, colour type 2, no interlace. | `Spec.reads_header_1920x1080` |
 | A file whose first signature byte is wrong is refused. | `Spec.rejects_bad_signature` |
 | A file whose IHDR chunk carries a CRC that does not match its type and data is refused. | `Spec.rejects_bad_crc` |
 | A file cut short inside its first chunk is refused. | `Spec.rejects_truncated_input` |
@@ -96,8 +104,17 @@ its first chunk's data is the printed form of `hd`, a well
 formed header, and no chunk after the first has type IHDR.
 The header is a parameter of the predicate, so
 the file level round trip names the header the read must
-return: a reader that answered a fixed header, or swapped the
-width and the height, would not meet it.
+return. That holds relative to the printer: the read must
+return the header whose `printIhdr` bytes the first chunk
+holds. So a reader that answered a fixed header, or swapped the
+width and the height while the printer did not, would not meet
+it. A change that swapped them in both the printer and the
+reader would still meet the round trips. What stops it is
+`Spec.printIhdr_layout`, which fixes the bytes the printer
+writes (the width first, then the height, each four bytes big
+endian), and the two accepted inputs,
+`Spec.reads_real_file_header` and `Spec.reads_header_1920x1080`,
+whose widths and heights differ.
 
 Each reader is pinned to its rule in both directions. The
 round trip says it accepts the printed form of every well
@@ -116,27 +133,44 @@ therefore a proved rejection rule. The named refusal theorems
 in the table are worked examples of those rules, one input
 each.
 
+The round trips and the soundness theorems are stated in terms
+of the printers. The layout theorems fix what the printers
+write: `Spec.print_layout` the chunk layout, and
+`Spec.printIhdr_layout` the 13 header bytes. `Spec.isLetter_iff`,
+`Spec.ihdrType_eq`, and `Spec.isIEND_iff` fix the letters and
+type bytes the rules name. Together with the round trips and the
+soundness theorems, they fix which bytes each reader accepts and
+what it returns, for every input. The one function they leave as
+the code has it is the CRC-32 (see below).
+
 The headline theorems rest on the proofs in
-`Proofs/RoundTrip.lean`, `Proofs/Header.lean`, and
-`Proofs/Sound.lean`, where they are `Png.Proofs.parse_print`,
-`Png.Proofs.parseIhdr_print`, `Png.Proofs.checkPair_iff`,
-`Png.Proofs.parseFile_print`, `Png.Proofs.parse_sound`,
-`Png.Proofs.parseIhdr_sound`, and `Png.Proofs.parseFile_sound`.
-Each checks against two of the standard axioms (`propext`,
-`Quot.sound`), which a reader can confirm with `#print
-axioms`, or by running `lake env lean Proofs/Verify.lean`;
-the test harness reads that output for every theorem
-`comparator.json` names, and records it.
-The refusal theorems are single inputs checked in the kernel
-with `decide +kernel`.
+`Proofs/RoundTrip.lean`, `Proofs/Header.lean`,
+`Proofs/Sound.lean`, and `Proofs/Layout.lean`, where they are
+`Png.Proofs.parse_print`, `Png.Proofs.parseIhdr_print`,
+`Png.Proofs.checkPair_iff`, `Png.Proofs.parseFile_print`,
+`Png.Proofs.parse_sound`, `Png.Proofs.parseIhdr_sound`,
+`Png.Proofs.parseFile_sound`, `Png.Proofs.print_layout`,
+`Png.Proofs.printIhdr_layout`, `Png.Proofs.isLetter_iff`, and
+`Png.Proofs.isIEND_iff`. Each checks against at most two of the
+standard axioms (`propext`, `Quot.sound`), which a reader can
+confirm with `#print axioms`, or by running `lake env lean
+Proofs/Verify.lean`; the test harness reads that output for
+every theorem `comparator.json` names, and records it.
+The refusal theorems and the two accepted inputs are single
+inputs checked in the kernel with `decide +kernel`, and
+`Spec.ihdrType_eq` holds by definition. The test harness reads
+the two accepted inputs from `Spec.lean` and checks the header
+each states against its own big endian reading of the bytes,
+the tool's `header` answer, and libpng's.
 
 The code is in `Png/Value.lean` (the chunk type and the
 printer), `Png/Parse.lean` (the parser), `Png/Crc32.lean` (the
 CRC-32), and `Png/Header.lean` (the IHDR header value, its
 reader and printer, and the file level read). The well
 formedness rules (`Spec.WFChunk`, `Spec.WF`, `Spec.WFHeader`,
-`Spec.WFFull`) and the written out table of allowed pairs
-(`Spec.allowedPairs`) give the statements their meaning and no
+`Spec.WFFull`), the written out table of allowed pairs
+(`Spec.allowedPairs`), and four bytes big endian
+(`Spec.bigEndian4`) give the statements their meaning and no
 code uses them, so they are part of the specification, in
 `Spec/Defs.lean`, and a change to them voids an approval. The
 command line tool in `Main.lean` calls `Png.parse`,
@@ -145,8 +179,8 @@ the theorems are about.
 
 ## What is not proved
 
-- That the well formedness rules (`WF`, `WFHeader`, `WFFull`, and the table of allowed pairs) are the PNG specification's rules. The proofs tie each reader to its rule exactly, in both directions, but that the rule says what the PNG specification says is a reading: `SPEC.md` states it in words, and the tests compare the readers against a strict oracle written in the harness from those rules, and the header read against libpng, file by file. Where libpng and this reader differ, the test record names each difference and the rule behind it.
-- That the CRC-32 here is the standard one. The round trip needs no such fact, since the parser and the printer compute the same function. The differential tests against Python zlib's `crc32` are what tie this function to the standard.
+- That the well formedness rules (`WF`, `WFHeader`, `WFFull`, and the table of allowed pairs) and the byte layout the layout theorems state (`Spec.print_layout`, `Spec.printIhdr_layout`, with `Spec.bigEndian4`) are the PNG specification's. The proofs tie each reader to its rule and each printer to the stated layout exactly, but that the rule and the layout say what the PNG specification says is a reading: `SPEC.md` states it in words, and the tests compare the readers against a strict oracle written in the harness from those rules, and the header read against libpng, file by file, the two accepted inputs of `Spec.lean` among them. Where libpng and this reader differ, the test record names each difference and the rule behind it.
+- That the CRC-32 here is the standard one. `Spec.print_layout` states the chunk layout with the code's own CRC-32 function (`Png.Crc32.crc32`), and no theorem says that function is the standard CRC-32. The round trip needs no such fact, since the parser and the printer compute the same function. The differential tests against Python zlib's `crc32` are what tie this function to the standard. Two statements pin it on single inputs: `Spec.reads_real_file_header` holds only if the function gives the three CRCs that zlib wrote into that file, and `Spec.rejects_bad_crc` holds only if it does not give the wrong CRC that its file carries.
 - Anything inside a chunk's data past the IHDR header. The data of every other chunk type is opaque here. IDAT data is not inflated. No pixel is ever decoded.
 - Chunk order past the first and last, except for IHDR. Which types may appear, how many times, and in what order between IHDR and IEND is not checked, with one exception: the file level read (`header`) refuses a second IHDR chunk. The chunk layer (`parse`) does not, and reads it as an ordinary chunk. So an indexed colour file with no PLTE chunk is accepted, where libpng refuses it.
 - A chunk of type IEND that carries data. The PNG specification gives IEND no data, but this reader reads such a chunk as an ordinary chunk, at both layers: the file is accepted when an IEND chunk with no data ends it, and refused when none does. libpng refuses such a chunk when it comes before IDAT, and reads a file that ends in one, with a warning. `SPEC.md` states this reading, and the test record names both differences.
@@ -177,8 +211,8 @@ the theorems are about.
   where it is installed. The results file names the versions
   used.
 - The line handling in `Main.lean` (splitting a request
-  line, reading decimal codes). The tests drive it, and no
-  proof covers it.
+  line, reading decimal codes) and the text of the `header`
+  answer. The tests drive them, and no proof covers them.
 - There are no exceptions to item 4 of the bar: the project
   uses none of the features it forbids.
 
@@ -192,8 +226,9 @@ the theorems are about.
    and every other kernel shipped with Lean.
 2. `python3 tests/run_tests.py`: the real files, the hand
    built cases, the differential runs against the oracle,
-   the mutations, the header sections, and the libpng
-   comparison of the header read, with counts, named
+   the mutations, the header sections, the accepted inputs
+   stated in `Spec.lean`, and the libpng comparison of the
+   header read, with counts, named
    differences, and any failures written to
    `tests/TEST-RESULTS.md`.
 3. `lake build`: the library, the proofs, and the tool build
