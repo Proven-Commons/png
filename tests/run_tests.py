@@ -57,7 +57,9 @@ exits non-zero if any check fails. It needs Python 3.11 or later.
 """
 
 import argparse
+import json
 import random
+import re
 import struct
 import subprocess
 import sys
@@ -807,6 +809,78 @@ def run_header_malformed():
     return lines, failures
 
 
+# ---------------------------------------------------------------- the
+# axiom check. Proofs/Verify.lean prints `#print axioms` for the
+# headline theorems in Png.Proofs and for every theorem
+# comparator.json names. Each must have its line, and each may
+# depend on these three axioms and no other: a `sorryAx`, or any
+# axiom a proof adds of its own, is a failure.
+
+AXIOMS_ALLOWED = ("propext", "Classical.choice", "Quot.sound")
+
+HEADLINE = [
+    "Png.Proofs.parse_print",
+    "Png.Proofs.parseIhdr_print",
+    "Png.Proofs.checkPair_iff",
+    "Png.Proofs.parseFile_print",
+]
+
+
+def axiom_names():
+    """The theorems the axiom check covers: the headline theorems,
+    then every theorem comparator.json names."""
+    config = json.loads((ROOT / "comparator.json").read_text(encoding="utf-8"))
+    return HEADLINE + list(config["theorem_names"])
+
+
+def read_axioms(text):
+    """The axioms of each theorem in `#print axioms` output, by
+    name. A list may run over several lines."""
+    found = {}
+    for m in re.finditer(r"'([^']+)' depends on axioms: \[([^\]]*)\]", text):
+        found[m.group(1)] = [a.strip() for a in m.group(2).split(",") if a.strip()]
+    for m in re.finditer(r"'([^']+)' does not depend on any axioms", text):
+        found[m.group(1)] = []
+    return found
+
+
+def axiom_failures(found, names):
+    failures = []
+    for name in names:
+        if name not in found:
+            failures.append(f"axiom check: no `#print axioms` output for {name}")
+            continue
+        extra = [a for a in found[name] if a not in AXIOMS_ALLOWED]
+        if extra:
+            failures.append(
+                f"axiom check: {name} depends on {', '.join(extra)}, "
+                "beyond propext, Classical.choice, and Quot.sound"
+            )
+    return failures
+
+
+def axiom_self_test():
+    """The check itself, on planted output: a theorem on sorryAx, one
+    on an axiom of its own, and a missing line must each fail, and
+    clean output must pass. Returns the failures of the check."""
+    names = ["A.clean", "A.none", "A.sorry", "A.own"]
+    planted = (
+        "'A.clean' depends on axioms: [propext,\n Classical.choice, Quot.sound]\n"
+        "'A.none' does not depend on any axioms\n"
+        "'A.sorry' depends on axioms: [propext, sorryAx]\n"
+        "'A.own' depends on axioms: [Quot.sound, A.myAxiom]\n"
+    )
+    got = axiom_failures(read_axioms(planted), names + ["A.missing"])
+    want = [
+        "axiom check: A.sorry depends on sorryAx, beyond propext, Classical.choice, and Quot.sound",
+        "axiom check: A.own depends on A.myAxiom, beyond propext, Classical.choice, and Quot.sound",
+        "axiom check: no `#print axioms` output for A.missing",
+    ]
+    if got != want:
+        return [f"axiom check self-test: planted output gave {got!r}"]
+    return []
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=SEED_DEFAULT)
@@ -854,9 +928,12 @@ def main():
         timeout=120,
     ).stdout.strip()
 
-    # The axiom check: Proofs/Verify.lean prints the axioms of
-    # the four named theorems with `#print axioms`. Its output
-    # goes into the results file, in the Axiom check section.
+    # The axiom check: Proofs/Verify.lean prints the axioms of the
+    # headline theorems and of every theorem comparator.json names,
+    # with `#print axioms`. The names in that output are read, and
+    # any axiom beyond the three standard ones is a failure. The
+    # output goes into the results file, in the Axiom check section.
+    all_failures += axiom_self_test()
     axiom_run = subprocess.run(
         ["lake", "env", "lean", "Proofs/Verify.lean"],
         cwd=ROOT,
@@ -864,14 +941,18 @@ def main():
         text=True,
         timeout=600,
     )
-    axiom_lines = [
-        line for line in axiom_run.stdout.strip().splitlines() if line.strip()
-    ]
-    if axiom_run.returncode != 0 or len(axiom_lines) != 4:
+    if axiom_run.returncode != 0:
         all_failures.append(
-            "axiom check: running Proofs/Verify.lean gave "
-            f"status {axiom_run.returncode} and {len(axiom_lines)} lines"
+            f"axiom check: running Proofs/Verify.lean exited {axiom_run.returncode}"
         )
+    covered = axiom_names()
+    found = read_axioms(axiom_run.stdout)
+    all_failures += axiom_failures(found, covered)
+    axiom_lines = [
+        f"'{name}' depends on axioms: [{', '.join(found[name])}]"
+        for name in covered
+        if name in found
+    ]
 
     out = ["# Test results", ""]
     out.append("Written by `tests/run_tests.py`. Rerun it to check these numbers.")
@@ -888,8 +969,13 @@ def main():
     out.append("## Axiom check")
     out.append("")
     out.append(
-        "The output of `#print axioms` for the four named theorems, "
-        "from `lake env lean Proofs/Verify.lean`:"
+        f"The output of `#print axioms` for the {len(HEADLINE)} headline theorems "
+        f"and the {len(covered) - len(HEADLINE)} theorems `comparator.json` names, "
+        "from `lake env lean Proofs/Verify.lean`. The harness reads the names, and "
+        "fails on any axiom but "
+        + ", ".join(f"`{a}`" for a in AXIOMS_ALLOWED)
+        + ". A self-test on planted output (a `sorryAx`, an axiom of a proof's own, "
+        "a missing line) runs first."
     )
     out.append("")
     for line in axiom_lines:
