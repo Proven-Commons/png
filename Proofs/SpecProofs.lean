@@ -1,10 +1,11 @@
 /-
   Proofs of the statements in `Spec.lean`, under the same names.
 
-  The round trips, the table, and the soundness statements are
-  the theorems proved in `Proofs/RoundTrip.lean`,
-  `Proofs/Header.lean`, and `Proofs/Sound.lean`. The refusals
-  are single inputs, checked in the kernel with `decide +kernel`:
+  The round trips, the table, the soundness statements, and the
+  byte layout are the theorems proved in `Proofs/RoundTrip.lean`,
+  `Proofs/Header.lean`, `Proofs/Sound.lean`, and
+  `Proofs/Layout.lean`. The accepted and refused inputs are
+  single inputs, checked in the kernel with `decide +kernel`:
   no native evaluation, which the bar forbids.
 -/
 
@@ -13,6 +14,7 @@ import Spec.Defs
 import Proofs.RoundTrip
 import Proofs.Header
 import Proofs.Sound
+import Proofs.Layout
 
 open Png Spec
 
@@ -46,6 +48,51 @@ theorem Spec.parseFile_sound {bs : List UInt8} {hd : Ihdr} {doc : Doc}
     (h : parseFile bs = some (hd, doc)) :
     WFFull hd doc ∧ print doc = bs :=
   Png.Proofs.parseFile_sound h
+
+
+theorem Spec.print_layout (doc : Doc) :
+    print doc = [137, 80, 78, 71, 13, 10, 26, 10] ++
+      doc.flatMap (fun c =>
+        bigEndian4 c.data.length ++ [c.t1, c.t2, c.t3, c.t4] ++ c.data ++
+          bigEndian4 (Crc32.crc32 ([c.t1, c.t2, c.t3, c.t4] ++ c.data)).toNat) :=
+  Png.Proofs.print_layout doc
+
+theorem Spec.printIhdr_layout (h : Ihdr) :
+    printIhdr h = bigEndian4 h.width ++ bigEndian4 h.height ++
+      [h.bitDepth, h.colorType, 0, 0, h.interlace] :=
+  Png.Proofs.printIhdr_layout h
+
+theorem Spec.isLetter_iff (b : UInt8) :
+    isLetter b = true ↔
+      (65 ≤ b.toNat ∧ b.toNat ≤ 90) ∨ (97 ≤ b.toNat ∧ b.toNat ≤ 122) :=
+  Png.Proofs.isLetter_iff b
+
+theorem Spec.ihdrType_eq : ihdrType = [73, 72, 68, 82] := rfl
+
+theorem Spec.isIEND_iff (c : Chunk) :
+    isIEND c = true ↔ [c.t1, c.t2, c.t3, c.t4] = [73, 69, 78, 68] ∧ c.data = [] :=
+  Png.Proofs.isIEND_iff c
+
+
+theorem Spec.reads_real_file_header :
+    (parseFile ([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73,
+      72, 68, 82, 0, 0, 0, 4, 0, 0, 0, 3, 8, 6, 0, 0, 0, 180, 244,
+      174, 198, 0, 0, 0, 62, 73, 68, 65, 84, 120, 156, 1, 51, 0, 204,
+      255, 0, 248, 207, 45, 4, 205, 181, 169, 174, 98, 138, 255, 174,
+      190, 27, 111, 191, 0, 254, 105, 254, 66, 198, 209, 157, 111,
+      200, 221, 165, 145, 35, 173, 191, 75, 0, 216, 164, 157, 244,
+      188, 239, 173, 101, 28, 78, 104, 79, 114, 243, 122, 31, 237,
+      218, 28, 90, 62, 15, 23, 102, 0, 0, 0, 0, 73, 69, 78, 68, 174,
+      66, 96, 130] : List UInt8)).map Prod.fst =
+      some { width := 4, height := 3, bitDepth := 8, colorType := 6, interlace := 0 } := by
+  decide +kernel
+
+
+theorem Spec.reads_header_1920x1080 :
+    parseIhdr ([0, 0, 7, 128, 0, 0, 4, 56, 8, 2, 0, 0, 0]
+      : List UInt8) =
+      some { width := 1920, height := 1080, bitDepth := 8, colorType := 2, interlace := 0 } := by
+  decide +kernel
 
 
 theorem Spec.rejects_bad_signature :

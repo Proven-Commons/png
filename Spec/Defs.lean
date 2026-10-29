@@ -1,6 +1,7 @@
 /-
   The definitions the statements in `Spec.lean` use besides the
-  code under proof: the IEND chunk as a value, well formedness at
+  code under proof: four bytes big endian (`bigEndian4`), the
+  IEND chunk as a value, well formedness at
   the chunk layer (`WFChunk`, `WF`), the written out table of
   allowed (colour type, bit depth) pairs, well formedness of a
   header (`WFHeader`), and full well formedness of a document
@@ -16,6 +17,16 @@ import Png
 namespace Spec
 
 open Png
+
+/-- A number as four bytes, most significant first (big endian):
+    its base 256 digits, from the 2^24 place down to the units.
+    The PNG specification writes every four byte number this way:
+    chunk lengths, CRCs, and the width and height in IHDR. A
+    number of 2^32 or more keeps only its lowest four digits;
+    the numbers PNG writes are below 2^31. -/
+def bigEndian4 (n : Nat) : List UInt8 :=
+  [UInt8.ofNat (n / 16777216 % 256), UInt8.ofNat (n / 65536 % 256),
+   UInt8.ofNat (n / 256 % 256), UInt8.ofNat (n % 256)]
 
 /-- The IEND chunk itself: type IEND, no data. -/
 def iendChunk : Chunk := ⟨73, 69, 78, 68, []⟩

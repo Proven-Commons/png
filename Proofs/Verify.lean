@@ -12,6 +12,7 @@
 import Proofs.RoundTrip
 import Proofs.Header
 import Proofs.Sound
+import Proofs.Layout
 import Proofs.SpecProofs
 
 #print axioms Png.Proofs.parse_print
@@ -21,6 +22,10 @@ import Proofs.SpecProofs
 #print axioms Png.Proofs.parse_sound
 #print axioms Png.Proofs.parseIhdr_sound
 #print axioms Png.Proofs.parseFile_sound
+#print axioms Png.Proofs.print_layout
+#print axioms Png.Proofs.printIhdr_layout
+#print axioms Png.Proofs.isLetter_iff
+#print axioms Png.Proofs.isIEND_iff
 
 #print axioms Spec.parse_print
 #print axioms Spec.parseIhdr_print
@@ -29,6 +34,13 @@ import Proofs.SpecProofs
 #print axioms Spec.parse_sound
 #print axioms Spec.parseIhdr_sound
 #print axioms Spec.parseFile_sound
+#print axioms Spec.print_layout
+#print axioms Spec.printIhdr_layout
+#print axioms Spec.isLetter_iff
+#print axioms Spec.ihdrType_eq
+#print axioms Spec.isIEND_iff
+#print axioms Spec.reads_real_file_header
+#print axioms Spec.reads_header_1920x1080
 #print axioms Spec.rejects_bad_signature
 #print axioms Spec.rejects_bad_crc
 #print axioms Spec.rejects_truncated_input

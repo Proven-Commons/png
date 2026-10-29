@@ -10,10 +10,11 @@
   The statements use the definitions in `Png/Value.lean`,
   `Png/Parse.lean`, `Png/Crc32.lean`, and `Png/Header.lean`, the
   code under proof named in `bar.toml`, and the well formedness
-  predicates and the written out table of allowed pairs
-  (`Spec.WF`, `Spec.WFHeader`, `Spec.WFFull`, `Spec.allowedPairs`,
-  and what they use), which are in `Spec/Defs.lean`. That file is
-  part of the specification too.
+  predicates, the written out table of allowed pairs, and four
+  bytes big endian (`Spec.WF`, `Spec.WFHeader`, `Spec.WFFull`,
+  `Spec.allowedPairs`, `Spec.bigEndian4`, and what they use),
+  which are in `Spec/Defs.lean`. That file is part of the
+  specification too.
 -/
 
 import Png
@@ -47,9 +48,14 @@ theorem Spec.checkPair_iff (ct bd : UInt8) :
 
 /-- Printing a fully well formed document with header `hd` and
     reading it back at both layers gives back that header, `hd`
-    itself, and the document. So a reader that returned some
-    other header, a fixed one or one with the width and height
-    swapped, fails this statement. -/
+    itself, and the document. This holds relative to the printer:
+    the first chunk's data is `printIhdr hd`. So a reader that
+    returned some other header than the one `printIhdr` wrote, a
+    fixed one or one with the width and height swapped, fails
+    this statement. A change that swapped them in both the
+    printer and the reader would still meet it; that change fails
+    `Spec.printIhdr_layout`, which fixes the bytes the printer
+    writes, and the accepted inputs below. -/
 theorem Spec.parseFile_print {hd : Ihdr} {doc : Doc} (h : WFFull hd doc) :
     parseFile (print doc) = some (hd, doc) := sorry
 
@@ -82,6 +88,100 @@ theorem Spec.parseIhdr_sound {bs : List UInt8} {h : Ihdr}
 theorem Spec.parseFile_sound {bs : List UInt8} {hd : Ihdr} {doc : Doc}
     (h : parseFile bs = some (hd, doc)) :
     WFFull hd doc ∧ print doc = bs := sorry
+
+/-! ## The byte layout
+
+The round trips and their converses tie each reader to its
+printer, but say nothing of the bytes the printer writes: a
+printer and a reader that both put the height before the width,
+or both wrote lengths least significant byte first, would meet
+them. The statements here fix those bytes: the chunk layout, the
+13 bytes of the header, the letters a chunk type may use, and the
+type bytes of IHDR and IEND. With the round trips and the
+converses above, they fix what each reader accepts and returns
+for every input: the chunk parser accepts exactly the bytes
+`Spec.print_layout` gives for a well formed chunk list, and the
+header reader accepts exactly the bytes `Spec.printIhdr_layout`
+gives for a well formed header, and returns that header. The one
+function they leave as the code has it is the CRC-32. -/
+
+/-- The bytes `print` writes for a chunk list: the eight
+    signature bytes, then each chunk in order as its data length
+    in four bytes big endian, its four type bytes, its data, and
+    the CRC-32 of its type bytes and data in four bytes big
+    endian. This is the chunk layout of the PNG specification.
+    The CRC-32 is the function in `Png/Crc32.lean`. -/
+theorem Spec.print_layout (doc : Doc) :
+    print doc = [137, 80, 78, 71, 13, 10, 26, 10] ++
+      doc.flatMap (fun c =>
+        bigEndian4 c.data.length ++ [c.t1, c.t2, c.t3, c.t4] ++ c.data ++
+          bigEndian4 (Crc32.crc32 ([c.t1, c.t2, c.t3, c.t4] ++ c.data)).toNat) := sorry
+
+/-- The 13 bytes `printIhdr` writes for a header, in order: the
+    width in four bytes big endian, the height in four bytes big
+    endian, the bit depth, the colour type, a compression byte of
+    zero, a filter byte of zero, and the interlace byte. This is
+    the IHDR layout of the PNG specification. With
+    `Spec.parseIhdr_sound`, the width the header reader returns
+    is the value of the first four bytes it read, and the height
+    the value of the next four. -/
+theorem Spec.printIhdr_layout (h : Ihdr) :
+    printIhdr h = bigEndian4 h.width ++ bigEndian4 h.height ++
+      [h.bitDepth, h.colorType, 0, 0, h.interlace] := sorry
+
+/-- The letter test the chunk rules use (`Spec.WFChunk`, and the
+    parser) holds of the ASCII letters, A to Z (65 to 90) and a
+    to z (97 to 122), and of no other byte. -/
+theorem Spec.isLetter_iff (b : UInt8) :
+    isLetter b = true ↔
+      (65 ≤ b.toNat ∧ b.toNat ≤ 90) ∨ (97 ≤ b.toNat ∧ b.toNat ≤ 122) := sorry
+
+/-- The type bytes the chunk rules require of the first chunk
+    are I, H, D, R, in ASCII. -/
+theorem Spec.ihdrType_eq : ihdrType = [73, 72, 68, 82] := sorry
+
+/-- The IEND chunk, at which reading stops and which ends a well
+    formed chunk list, is a chunk with type bytes I, E, N, D, in
+    ASCII, and no data. -/
+theorem Spec.isIEND_iff (c : Chunk) :
+    isIEND c = true ↔ [c.t1, c.t2, c.t3, c.t4] = [73, 69, 78, 68] ∧ c.data = [] := sorry
+
+/-! ## Accepted inputs
+
+Two inputs the readers accept, with the header each returns. The
+width and the height differ in both, so a reader that swapped
+them fails each statement. The test harness reads both inputs
+from this file and checks the header each statement gives
+against its own reading of the bytes, against the tool's `header`
+answer, and, where libpng is installed, against libpng's. -/
+
+/-- A real PNG file is read with its own header: 4 by 3, bit
+    depth 8, colour type 6 (truecolour with alpha), no interlace.
+    The file has an IHDR chunk, an IDAT chunk holding the
+    zlib compressed scanlines of random pixels, and IEND. It is
+    the 4 by 3 file among the test suite's real files. The test
+    harness checks that zlib inflates its IDAT data to three
+    scanlines of that width, and has libpng decode it in full. -/
+theorem Spec.reads_real_file_header :
+    (parseFile ([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73,
+      72, 68, 82, 0, 0, 0, 4, 0, 0, 0, 3, 8, 6, 0, 0, 0, 180, 244,
+      174, 198, 0, 0, 0, 62, 73, 68, 65, 84, 120, 156, 1, 51, 0, 204,
+      255, 0, 248, 207, 45, 4, 205, 181, 169, 174, 98, 138, 255, 174,
+      190, 27, 111, 191, 0, 254, 105, 254, 66, 198, 209, 157, 111,
+      200, 221, 165, 145, 35, 173, 191, 75, 0, 216, 164, 157, 244,
+      188, 239, 173, 101, 28, 78, 104, 79, 114, 243, 122, 31, 237,
+      218, 28, 90, 62, 15, 23, 102, 0, 0, 0, 0, 73, 69, 78, 68, 174,
+      66, 96, 130] : List UInt8)).map Prod.fst =
+      some { width := 4, height := 3, bitDepth := 8, colorType := 6, interlace := 0 } := sorry
+
+/-- The header reader reads the 13 bytes of a 1920 by 1080
+    header, bit depth 8, colour type 2 (truecolour), no
+    interlace, as width 1920 (the first four bytes, 0, 0, 7, 128)
+    and height 1080 (the next four, 0, 0, 4, 56). -/
+theorem Spec.reads_header_1920x1080 :
+    parseIhdr ([0, 0, 7, 128, 0, 0, 4, 56, 8, 2, 0, 0, 0]
+      : List UInt8) =
+      some { width := 1920, height := 1080, bitDepth := 8, colorType := 2, interlace := 0 } := sorry
 
 /-! ## Refused inputs
 
