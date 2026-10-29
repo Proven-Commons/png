@@ -52,7 +52,7 @@ Needs Linux, elan, and Python 3.11 or later.
 
 ```
 lake build
-grep -rn "sorry" --include="*.lean" Png Proofs Main.lean Png.lean Png/Proofs.lean
+grep -rn "sorry" --include="*.lean" Png Main.lean Png.lean
 python3 tests/run_tests.py
 ```
 
