@@ -17,9 +17,9 @@
 
   The header round trip is `parseIhdr_print`. The file level
   claim is `parseFile_print`: a fully well formed document
-  (chunk layer well formed, first chunk the printed form of a
-  well formed header) prints and reads back whole, header
-  included.
+  with header `hd` (chunk layer well formed, first chunk the
+  printed form of the well formed header `hd`) prints and reads
+  back whole, and the header the read returns is `hd` itself.
 -/
 
 import Png
@@ -121,19 +121,18 @@ theorem checkPair_iff (ct bd : UInt8) :
 
 /-- A fully well formed document is well formed at the chunk
     layer. -/
-theorem wfFull_wf {doc : Doc} (h : WFFull doc) : WF doc := by
-  obtain ⟨hd, head, mid, hdoc, htype, hdata, -, hall, hnot⟩ := h
+theorem wfFull_wf {hd : Ihdr} {doc : Doc} (h : WFFull hd doc) : WF doc := by
+  obtain ⟨head, mid, hdoc, htype, hdata, -, hall, hnot⟩ := h
   exact ⟨head, mid, hdoc, htype,
     by rw [hdata]; exact printIhdr_length hd, hall, hnot⟩
 
 /-- The file level round trip: printing a fully well formed
-    document and reading the file back at both layers gives the
-    document back, with its header. -/
-theorem parseFile_print {doc : Doc} (h : WFFull doc) :
-    ∃ hd : Ihdr, parseFile (print doc) = some (hd, doc) := by
+    document with header `hd` and reading the file back at both
+    layers gives back `hd` itself and the document. -/
+theorem parseFile_print {hd : Ihdr} {doc : Doc} (h : WFFull hd doc) :
+    parseFile (print doc) = some (hd, doc) := by
   have hwf : WF doc := wfFull_wf h
-  obtain ⟨hd, head, mid, hdoc, htype, hdata, hwfhd, hall, hnot⟩ := h
-  refine ⟨hd, ?_⟩
+  obtain ⟨head, mid, hdoc, htype, hdata, hwfhd, hall, hnot⟩ := h
   unfold parseFile
   rw [parse_print hwf]
   show (headerOf doc).map (fun x => (x, doc)) = some (hd, doc)

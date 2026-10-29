@@ -26,8 +26,8 @@ theorem Spec.checkPair_iff (ct bd : UInt8) :
       (ct.toNat, bd.toNat) ∈ allowedPairs :=
   Png.Proofs.checkPair_iff ct bd
 
-theorem Spec.parseFile_print {doc : Doc} (h : WFFull doc) :
-    ∃ hd : Ihdr, parseFile (print doc) = some (hd, doc) :=
+theorem Spec.parseFile_print {hd : Ihdr} {doc : Doc} (h : WFFull hd doc) :
+    parseFile (print doc) = some (hd, doc) :=
   Png.Proofs.parseFile_print h
 
 

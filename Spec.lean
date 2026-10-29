@@ -41,10 +41,13 @@ theorem Spec.checkPair_iff (ct bd : UInt8) :
     checkPair ct bd = true ↔
       (ct.toNat, bd.toNat) ∈ allowedPairs := sorry
 
-/-- Printing a fully well formed document and reading it back at
-    both layers gives the document back, with its header. -/
-theorem Spec.parseFile_print {doc : Doc} (h : WFFull doc) :
-    ∃ hd : Ihdr, parseFile (print doc) = some (hd, doc) := sorry
+/-- Printing a fully well formed document with header `hd` and
+    reading it back at both layers gives back that header, `hd`
+    itself, and the document. So a reader that returned some
+    other header, a fixed one or one with the width and height
+    swapped, fails this statement. -/
+theorem Spec.parseFile_print {hd : Ihdr} {doc : Doc} (h : WFFull hd doc) :
+    parseFile (print doc) = some (hd, doc) := sorry
 
 /-! ## Refused inputs
 

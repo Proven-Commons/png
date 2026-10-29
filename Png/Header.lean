@@ -128,13 +128,14 @@ def parseFile (bs : List UInt8) : Option (Ihdr × Doc) :=
   | some doc => (headerOf doc).map fun h => (h, doc)
   | none => none
 
-/-- A document is fully well formed when it is well formed at
-    the chunk layer (the `WF` of slice 1), its first chunk's
-    data is the printed form of some header, and that header is
-    well formed. Stated with the witnesses out, in the shape of
-    `WF`. -/
-def WFFull (doc : Doc) : Prop :=
-  ∃ (hd : Ihdr) (head : Chunk) (mid : List Chunk),
+/-- A document is fully well formed, with header `hd`, when it
+    is well formed at the chunk layer (the `WF` of slice 1), its
+    first chunk's data is the printed form of `hd`, and `hd` is
+    well formed. The header is a parameter, not a witness, so a
+    statement over `WFFull hd doc` can say which header a reader
+    must return. Stated in the shape of `WF`. -/
+def WFFull (hd : Ihdr) (doc : Doc) : Prop :=
+  ∃ (head : Chunk) (mid : List Chunk),
     doc = head :: mid ++ [iendChunk] ∧
     head.typeBytes = ihdrType ∧ head.data = printIhdr hd ∧
     WFHeader hd ∧

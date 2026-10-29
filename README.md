@@ -61,7 +61,7 @@ same names. `comparator.json` lists all of them.
 | Parsing the printed form of a well formed chunk list gives the list back. | `Spec.parse_print` |
 | Reading the printed bytes of a well formed IHDR header gives the header back. | `Spec.parseIhdr_print` |
 | The depth checker agrees with the written out table of allowed (colour type, bit depth) pairs on every byte pair. | `Spec.checkPair_iff` |
-| Printing a fully well formed document and reading it back at both layers gives the document back, header included. | `Spec.parseFile_print` |
+| Printing a fully well formed document whose first chunk holds the printed header `hd`, and reading it back at both layers, gives back `hd` itself and the document. | `Spec.parseFile_print` |
 | A file whose first signature byte is wrong is refused. | `Spec.rejects_bad_signature` |
 | A file whose IHDR chunk carries a CRC that does not match its type and data is refused. | `Spec.rejects_bad_crc` |
 | A file cut short inside its first chunk is refused. | `Spec.rejects_truncated_input` |
@@ -84,9 +84,13 @@ IEND chunk; every chunk type is four ASCII letters; and every
 data length is below 2^31. A header is well formed when its
 width and height are above zero and below 2^31, its interlace
 byte is 0 or 1, and its bit depth is one its colour type
-allows. A document is fully well formed when it is well
-formed at the chunk layer and its first chunk's data is the
-printed form of a well formed header.
+allows. A document is fully well formed with header `hd`
+(`WFFull hd doc`) when it is well formed at the chunk layer and
+its first chunk's data is the printed form of `hd`, a well
+formed header. The header is a parameter of the predicate, so
+the file level round trip names the header the read must
+return: a reader that answered a fixed header, or swapped the
+width and the height, would not meet it.
 
 The headline theorems rest on the proofs in
 `Proofs/RoundTrip.lean` and `Proofs/Header.lean`, where they
