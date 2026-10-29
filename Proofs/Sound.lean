@@ -26,12 +26,13 @@
 -/
 
 import Png
+import Spec.Defs
 import Proofs.RoundTrip
 import Proofs.Header
 
 namespace Png.Proofs
 
-open Png
+open Png Spec
 
 /-- Four bytes the reader takes off the front of the input are
     the printed form of the value it returns, and that value is

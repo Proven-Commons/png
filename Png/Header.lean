@@ -34,6 +34,11 @@
   the first has type IHDR: the PNG specification allows one IHDR
   chunk, and it comes first. The chunk layer of slice 1 does not
   look at this; only the file level read does.
+
+  The written out table of allowed pairs, and well formedness of
+  a header and of a whole document, give the statements their
+  meaning and no code uses them, so they are part of the
+  specification, in `Spec/Defs.lean`.
 -/
 
 import Png.Parse
@@ -67,29 +72,9 @@ def allowedDepths (ct : Nat) : List Nat :=
 def pairAllowed (ct bd : Nat) : Bool :=
   decide (bd ∈ allowedDepths ct)
 
-/-- The allowed (colour type, bit depth) pairs, written out in
-    full. The checker above is built from the per-type table;
-    the proof in `Proofs/Header.lean` shows the two agree on
-    every colour type byte and every bit depth byte. -/
-def allowedPairs : List (Nat × Nat) :=
-  [(0, 1), (0, 2), (0, 4), (0, 8), (0, 16),
-   (2, 8), (2, 16),
-   (3, 1), (3, 2), (3, 4), (3, 8),
-   (4, 8), (4, 16),
-   (6, 8), (6, 16)]
-
 /-- Does this bit depth go with this colour type? The two
     arguments are the file's bytes. -/
 def checkPair (ct bd : UInt8) : Bool := pairAllowed ct.toNat bd.toNat
-
-/-- A header is well formed when the width and the height are
-    above zero and below 2^31, the interlace byte is 0 or 1, and
-    the bit depth is one the colour type allows. -/
-def WFHeader (h : Ihdr) : Prop :=
-  0 < h.width ∧ h.width < 2147483648 ∧
-  0 < h.height ∧ h.height < 2147483648 ∧
-  (h.interlace = 0 ∨ h.interlace = 1) ∧
-  checkPair h.colorType h.bitDepth = true
 
 /-- The 13 IHDR data bytes of a header: width and height big
     endian, then bit depth, colour type, compression zero,
@@ -138,21 +123,5 @@ def parseFile (bs : List UInt8) : Option (Ihdr × Doc) :=
   match parse bs with
   | some doc => (headerOf doc).map fun h => (h, doc)
   | none => none
-
-/-- A document is fully well formed, with header `hd`, when it
-    is well formed at the chunk layer (the `WF` of slice 1), its
-    first chunk's data is the printed form of `hd`, `hd` is well
-    formed, and no chunk after the first has type IHDR. The
-    header is a parameter, not a witness, so a statement over
-    `WFFull hd doc` can say which header a reader must return.
-    Stated in the shape of `WF`. -/
-def WFFull (hd : Ihdr) (doc : Doc) : Prop :=
-  ∃ (head : Chunk) (mid : List Chunk),
-    doc = head :: mid ++ [iendChunk] ∧
-    head.typeBytes = ihdrType ∧ head.data = printIhdr hd ∧
-    WFHeader hd ∧
-    (∀ c ∈ doc, WFChunk c) ∧
-    (∀ c ∈ head :: mid, isIEND c = false) ∧
-    (∀ c ∈ mid, c.typeBytes ≠ ihdrType)
 
 end Png

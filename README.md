@@ -11,9 +11,10 @@ data bytes, checked against the validity rules of the PNG
 specification. It does not decode pixels, and it does not
 inflate IDAT data. The rules are written out in `SPEC.md`.
 
-The statements a reviewer approves are in `Spec.lean`, with
-their proofs in `Proofs/SpecProofs.lean`. No reviewer has
-approved them yet, so this project is not called verified.
+The statements a reviewer approves are in `Spec.lean`, over
+the definitions in `Spec/Defs.lean`, with their proofs in
+`Proofs/SpecProofs.lean`. No reviewer has approved them yet,
+so this project is not called verified.
 
 ## How to run it
 
@@ -126,11 +127,16 @@ the test harness reads that output for every theorem
 The refusal theorems are single inputs checked in the kernel
 with `decide +kernel`.
 
-The definitions are in `Png/Value.lean` (the chunk type, the
-printer, and the well formedness rules), `Png/Parse.lean`
-(the parser), `Png/Crc32.lean` (the CRC-32), and
-`Png/Header.lean` (the IHDR header value, its reader and
-printer, and the file level read). The command line tool in
+The code is in `Png/Value.lean` (the chunk type and the
+printer), `Png/Parse.lean` (the parser), `Png/Crc32.lean` (the
+CRC-32), and `Png/Header.lean` (the IHDR header value, its
+reader and printer, and the file level read). The well
+formedness rules (`Spec.WFChunk`, `Spec.WF`, `Spec.WFHeader`,
+`Spec.WFFull`) and the written out table of allowed pairs
+(`Spec.allowedPairs`) give the statements their meaning and no
+code uses them, so they are part of the specification, in
+`Spec/Defs.lean`, and a change to them voids an approval. The
+command line tool in
 `Main.lean` calls `Png.parse`, `Png.print`, and
 `Png.parseFile` directly, the same functions the theorems are
 about.

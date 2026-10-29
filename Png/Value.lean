@@ -14,6 +14,10 @@
   length, type, data, and a CRC it computes as it goes. Its output
   is the canonical form the tests compare against: a file this
   parser accepts is reprinted byte for byte.
+
+  Well formedness, the rule the round trip is stated over, is not
+  here: it gives the statements their meaning and no code uses it,
+  so it is part of the specification, in `Spec/Defs.lean`.
 -/
 
 import Png.Crc32
@@ -48,9 +52,6 @@ def ihdrType : List UInt8 := [73, 72, 68, 82]
 /-- The type bytes of the last chunk of every PNG file. -/
 def iendType : List UInt8 := [73, 69, 78, 68]
 
-/-- The IEND chunk itself: type IEND, no data. -/
-def iendChunk : Chunk := ⟨73, 69, 78, 68, []⟩
-
 /-- Is this chunk the IEND chunk: type IEND and no data? A chunk
     of type IEND that carries data is an ordinary chunk here. -/
 def isIEND (c : Chunk) : Bool :=
@@ -79,24 +80,5 @@ def printChunk (c : Chunk) : List UInt8 :=
     order. -/
 def print (doc : Doc) : List UInt8 :=
   signature ++ doc.flatMap printChunk
-
-/-- The per-chunk part of well formedness: each type byte is an
-    ASCII letter, and the data length stays below 2^31, as the PNG
-    specification bounds chunk lengths. -/
-def WFChunk (c : Chunk) : Prop :=
-  isLetter c.t1 = true ∧ isLetter c.t2 = true ∧
-  isLetter c.t3 = true ∧ isLetter c.t4 = true ∧
-  c.data.length < 2147483648
-
-/-- A document is well formed when it is a first chunk, then any
-    middle chunks, then the IEND chunk; the first chunk has type
-    IHDR and 13 data bytes; no chunk before the last is the IEND
-    chunk; and every chunk is a well formed chunk. -/
-def WF (doc : Doc) : Prop :=
-  ∃ (head : Chunk) (mid : List Chunk),
-    doc = head :: mid ++ [iendChunk] ∧
-    head.typeBytes = ihdrType ∧ head.data.length = 13 ∧
-    (∀ c ∈ doc, WFChunk c) ∧
-    (∀ c ∈ head :: mid, isIEND c = false)
 
 end Png

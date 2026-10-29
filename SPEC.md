@@ -1,6 +1,6 @@
 # Specification: png
 
-A PNG chunk parser and printer in Lean, with (slice 2) a decoder for the IHDR header. It does not decode pixels, and it does not inflate IDAT data. The claims below are stated as Lean theorems in `Spec.lean`. A reviewer who did not write this specification or those statements approves them; no reviewer has yet, so nothing here counts toward the verified bar.
+A PNG chunk parser and printer in Lean, with (slice 2) a decoder for the IHDR header. It does not decode pixels, and it does not inflate IDAT data. The claims below are stated as Lean theorems in `Spec.lean`, over the well formedness rules and the table of allowed pairs in `Spec/Defs.lean`. A reviewer who did not write this specification or those statements approves them; no reviewer has yet, so nothing here counts toward the verified bar.
 
 Bytes are `List UInt8` throughout.
 

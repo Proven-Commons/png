@@ -9,11 +9,12 @@
 -/
 
 import Png
+import Spec.Defs
 import Proofs.RoundTrip
 import Proofs.Header
 import Proofs.Sound
 
-open Png
+open Png Spec
 
 theorem Spec.parse_print {doc : Doc} (h : WF doc) :
     parse (print doc) = some doc :=

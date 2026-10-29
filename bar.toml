@@ -6,34 +6,42 @@ name = "png"
 # "in-progress" until every bar item passes, then "verified".
 status = "in-progress"
 page = "README.md"
-# GitHub handles of everyone who wrote the specification.
-spec_authors = ["abu-aska"]
+# GitHub handles of everyone who wrote the specification. zero-aska
+# changed it when carrying png#3 forward (the header in WFFull, the
+# soundness statements, the single IHDR rule, and Spec/Defs.lean).
+spec_authors = ["abu-aska", "zero-aska"]
 # The program people run. A change to it voids the approval.
 entry_points = ["Main.lean"]
 
 [spec]
-files = ["SPEC.md", "Spec.lean"]
-# The code under proof: the functions the statements are about.
+files = ["SPEC.md", "Spec.lean", "Spec/Defs.lean"]
+# The code under proof: the functions the statements are about. Well
+# formedness (Spec.WFChunk, Spec.WF, Spec.WFHeader, Spec.WFFull), the
+# IEND chunk as a value, and the written out table of allowed pairs only
+# give the statements their meaning, so they are in the spec files
+# above, not here.
 code = [
-  # The data types the statements are about.
-  "Png.Chunk", "Png.Doc", "Png.Ihdr",
+  # The data types the statements are about, their constructors, and
+  # their fields.
+  "Png.Chunk", "Png.Chunk.mk", "Png.Chunk.t1", "Png.Chunk.t2",
+  "Png.Chunk.t3", "Png.Chunk.t4", "Png.Chunk.data", "Png.Doc",
+  "Png.Ihdr", "Png.Ihdr.mk", "Png.Ihdr.width", "Png.Ihdr.height",
+  "Png.Ihdr.bitDepth", "Png.Ihdr.colorType", "Png.Ihdr.interlace",
   # The byte forms and the printer.
   "Png.signature", "Png.Chunk.typeBytes", "Png.isLetter",
-  "Png.ihdrType", "Png.iendType", "Png.iendChunk", "Png.isIEND",
+  "Png.ihdrType", "Png.iendType", "Png.isIEND",
   "Png.be32", "Png.u32", "Png.chunkCrc", "Png.printChunk",
   "Png.print",
   # The CRC-32 the chunk checks use.
   "Png.Crc32.step", "Png.Crc32.step8", "Png.Crc32.table",
   "Png.Crc32.update", "Png.Crc32.crc32",
-  # Well formedness at the chunk layer.
-  "Png.WFChunk", "Png.WF",
   # The chunk readers and the parser.
   "Png.get4", "Png.parseChunk", "Png.parseChunks", "Png.parse",
-  # The IHDR header: the allowed table, the check, well
-  # formedness, the printer, the reader, and the file level read.
-  "Png.allowedDepths", "Png.pairAllowed", "Png.allowedPairs",
-  "Png.checkPair", "Png.WFHeader", "Png.printIhdr",
-  "Png.parseIhdr", "Png.headerOf", "Png.parseFile", "Png.WFFull",
+  # The IHDR header: the depth check, the printer, the reader, and
+  # the file level read with its single IHDR rule.
+  "Png.allowedDepths", "Png.pairAllowed", "Png.checkPair",
+  "Png.printIhdr", "Png.parseIhdr", "Png.isIHDR", "Png.headerOf",
+  "Png.parseFile",
 ]
 
 # One entry per approval, added in a pull request the reviewer approves.

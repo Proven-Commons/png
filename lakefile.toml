@@ -1,7 +1,7 @@
 name = "png"
 version = "0.1.0"
 license = "Apache-2.0"
-defaultTargets = ["Png", "Proofs", "png"]
+defaultTargets = ["Png", "Spec", "Proofs", "png"]
 
 [[lean_lib]]
 name = "Png"

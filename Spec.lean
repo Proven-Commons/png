@@ -7,22 +7,26 @@
   proves exactly the statement written here. The `sorry` below is
   expected in this file only.
 
-  The statements use only the definitions in `Png/Value.lean`,
+  The statements use the definitions in `Png/Value.lean`,
   `Png/Parse.lean`, `Png/Crc32.lean`, and `Png/Header.lean`, the
-  code under proof named in `bar.toml`. No definition of their own
-  is needed, so this project has no `Spec/Defs.lean`.
+  code under proof named in `bar.toml`, and the well formedness
+  predicates and the written out table of allowed pairs
+  (`Spec.WF`, `Spec.WFHeader`, `Spec.WFFull`, `Spec.allowedPairs`,
+  and what they use), which are in `Spec/Defs.lean`. That file is
+  part of the specification too.
 -/
 
 import Png
+import Spec.Defs
 
-open Png
+open Png Spec
 
 /-! ## The round trips and the table
 
 The statements the slice stands on. Each one is the statement of
 the proved theorem of the same shape in `Proofs/RoundTrip.lean`
 or `Proofs/Header.lean`, over the same well formedness
-predicates, `Png.WF`, `Png.WFHeader`, and `Png.WFFull`. -/
+predicates, `Spec.WF`, `Spec.WFHeader`, and `Spec.WFFull`. -/
 
 /-- Parsing the printed form of a well formed chunk list gives
     the list back. So a printer that wrote nothing, or wrote

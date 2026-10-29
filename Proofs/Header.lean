@@ -27,11 +27,12 @@
 -/
 
 import Png
+import Spec.Defs
 import Proofs.RoundTrip
 
 namespace Png.Proofs
 
-open Png
+open Png Spec
 
 /-- One step of the header reader, stated for rewriting: 13
     bytes at the front of the input, with whatever follows. -/
@@ -51,6 +52,52 @@ theorem parseIhdr_step (w1 w2 w3 w4 h1 h2 h3 h4 bd ct comp filt int : UInt8)
 /-- The printed form of a header is 13 bytes. -/
 theorem printIhdr_length (h : Ihdr) : (printIhdr h).length = 13 := by
   simp [printIhdr, be32]
+
+/-- The table, exactly: a depth goes with a colour type under
+    the checker if and only if the pair is in the written out
+    list of allowed pairs. Stated for all numbers, so in
+    particular for every colour type byte and every bit depth
+    byte. -/
+theorem pairAllowed_iff : ∀ n m : Nat,
+    pairAllowed n m = true ↔ (n, m) ∈ allowedPairs := by
+  intro n m
+  by_cases h0 : n = 0
+  · subst h0
+    simp only [pairAllowed, decide_eq_true_eq]
+    show m ∈ [1, 2, 4, 8, 16] ↔ (0, m) ∈ allowedPairs
+    simp [allowedPairs]
+  by_cases h2 : n = 2
+  · subst h2
+    simp only [pairAllowed, decide_eq_true_eq]
+    show m ∈ [8, 16] ↔ (2, m) ∈ allowedPairs
+    simp [allowedPairs]
+  by_cases h3 : n = 3
+  · subst h3
+    simp only [pairAllowed, decide_eq_true_eq]
+    show m ∈ [1, 2, 4, 8] ↔ (3, m) ∈ allowedPairs
+    simp [allowedPairs]
+  by_cases h4 : n = 4
+  · subst h4
+    simp only [pairAllowed, decide_eq_true_eq]
+    show m ∈ [8, 16] ↔ (4, m) ∈ allowedPairs
+    simp [allowedPairs]
+  by_cases h6 : n = 6
+  · subst h6
+    simp only [pairAllowed, decide_eq_true_eq]
+    show m ∈ [8, 16] ↔ (6, m) ∈ allowedPairs
+    simp [allowedPairs]
+  · have hdep : allowedDepths n = [] := by
+      unfold allowedDepths
+      rw [if_neg h0, if_neg h2, if_neg h3, if_neg h4, if_neg h6]
+    simp only [pairAllowed, decide_eq_true_eq, hdep]
+    simp [allowedPairs, h0, h2, h3, h4, h6]
+
+/-- The table, in the byte form the parser uses: the check on
+    two bytes holds if and only if the pair of their values is
+    in the written out list. -/
+theorem checkPair_iff (ct bd : UInt8) :
+    checkPair ct bd = true ↔ (ct.toNat, bd.toNat) ∈ allowedPairs :=
+  pairAllowed_iff ct.toNat bd.toNat
 
 /-- The header round trip: reading the printed bytes of a well
     formed header gives the header back. -/
@@ -75,7 +122,7 @@ theorem parseIhdr_print (h : Ihdr) (hwf : WFHeader h) :
   rw [if_neg (by omega : ¬ (w = 0 ∨ hh = 0))]
   rw [if_neg (by omega : ¬ (w ≥ 2147483648 ∨ hh ≥ 2147483648))]
   rw [if_neg (by decide : ¬ ((0 : UInt8) ≠ 0 ∨ (0 : UInt8) ≠ 0))]
-  rw [if_neg hnl, if_pos hpair]
+  rw [if_neg hnl, if_pos ((checkPair_iff ct bd).mpr hpair)]
 
 /-- Four bytes read big endian and printed again are the same
     four bytes. -/
@@ -144,7 +191,7 @@ theorem parseIhdr_sound {bs : List UInt8} {h : Ihdr}
         (by omega : u32 w1 w2 w3 w4 < 2147483648),
         (by omega : 0 < u32 h1 h2 h3 h4),
         (by omega : u32 h1 h2 h3 h4 < 2147483648),
-        uint8_le_one hi, hpair⟩, ?_⟩
+        uint8_le_one hi, (checkPair_iff ct bd).mp hpair⟩, ?_⟩
       show be32 (u32 w1 w2 w3 w4) ++ be32 (u32 h1 h2 h3 h4)
         ++ [bd, ct, 0, 0, int] = _
       rw [be32_u32, be32_u32]
@@ -158,52 +205,6 @@ theorem parseIhdr_sound {bs : List UInt8} {h : Ihdr}
 theorem parseIhdr_iff (bs : List UInt8) (h : Ihdr) :
     parseIhdr bs = some h ↔ WFHeader h ∧ printIhdr h = bs :=
   ⟨parseIhdr_sound, fun ⟨hwf, hp⟩ => hp ▸ parseIhdr_print h hwf⟩
-
-/-- The table, exactly: a depth goes with a colour type under
-    the checker if and only if the pair is in the written out
-    list of allowed pairs. Stated for all numbers, so in
-    particular for every colour type byte and every bit depth
-    byte. -/
-theorem pairAllowed_iff : ∀ n m : Nat,
-    pairAllowed n m = true ↔ (n, m) ∈ allowedPairs := by
-  intro n m
-  by_cases h0 : n = 0
-  · subst h0
-    simp only [pairAllowed, decide_eq_true_eq]
-    show m ∈ [1, 2, 4, 8, 16] ↔ (0, m) ∈ allowedPairs
-    simp [allowedPairs]
-  by_cases h2 : n = 2
-  · subst h2
-    simp only [pairAllowed, decide_eq_true_eq]
-    show m ∈ [8, 16] ↔ (2, m) ∈ allowedPairs
-    simp [allowedPairs]
-  by_cases h3 : n = 3
-  · subst h3
-    simp only [pairAllowed, decide_eq_true_eq]
-    show m ∈ [1, 2, 4, 8] ↔ (3, m) ∈ allowedPairs
-    simp [allowedPairs]
-  by_cases h4 : n = 4
-  · subst h4
-    simp only [pairAllowed, decide_eq_true_eq]
-    show m ∈ [8, 16] ↔ (4, m) ∈ allowedPairs
-    simp [allowedPairs]
-  by_cases h6 : n = 6
-  · subst h6
-    simp only [pairAllowed, decide_eq_true_eq]
-    show m ∈ [8, 16] ↔ (6, m) ∈ allowedPairs
-    simp [allowedPairs]
-  · have hdep : allowedDepths n = [] := by
-      unfold allowedDepths
-      rw [if_neg h0, if_neg h2, if_neg h3, if_neg h4, if_neg h6]
-    simp only [pairAllowed, decide_eq_true_eq, hdep]
-    simp [allowedPairs, h0, h2, h3, h4, h6]
-
-/-- The table, in the byte form the parser uses: the check on
-    two bytes holds if and only if the pair of their values is
-    in the written out list. -/
-theorem checkPair_iff (ct bd : UInt8) :
-    checkPair ct bd = true ↔ (ct.toNat, bd.toNat) ∈ allowedPairs :=
-  pairAllowed_iff ct.toNat bd.toNat
 
 /-- A fully well formed document is well formed at the chunk
     layer. -/
