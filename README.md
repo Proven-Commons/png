@@ -91,9 +91,10 @@ data length is below 2^31. A header is well formed when its
 width and height are above zero and below 2^31, its interlace
 byte is 0 or 1, and its bit depth is one its colour type
 allows. A document is fully well formed with header `hd`
-(`WFFull hd doc`) when it is well formed at the chunk layer and
+(`WFFull hd doc`) when it is well formed at the chunk layer,
 its first chunk's data is the printed form of `hd`, a well
-formed header. The header is a parameter of the predicate, so
+formed header, and no chunk after the first has type IHDR.
+The header is a parameter of the predicate, so
 the file level round trip names the header the read must
 return: a reader that answered a fixed header, or swapped the
 width and the height, would not meet it.
@@ -112,7 +113,8 @@ for a `doc` fully well formed with header `hd`, and then
 returns `hd` and `doc` (`Spec.parseFile_print` with
 `Spec.parseFile_sound`). Every rule in these predicates is
 therefore a proved rejection rule. The named refusal theorems
-below the soundness theorems pin single inputs on top.
+in the table are worked examples of those rules, one input
+each.
 
 The headline theorems rest on the proofs in
 `Proofs/RoundTrip.lean`, `Proofs/Header.lean`, and
@@ -137,10 +139,9 @@ formedness rules (`Spec.WFChunk`, `Spec.WF`, `Spec.WFHeader`,
 (`Spec.allowedPairs`) give the statements their meaning and no
 code uses them, so they are part of the specification, in
 `Spec/Defs.lean`, and a change to them voids an approval. The
-command line tool in
-`Main.lean` calls `Png.parse`, `Png.print`, and
-`Png.parseFile` directly, the same functions the theorems are
-about.
+command line tool in `Main.lean` calls `Png.parse`,
+`Png.print`, and `Png.parseFile` directly, the same functions
+the theorems are about.
 
 ## What is not proved
 
@@ -148,7 +149,7 @@ about.
 - That the CRC-32 here is the standard one. The round trip needs no such fact, since the parser and the printer compute the same function. The differential tests against Python zlib's `crc32` are what tie this function to the standard.
 - Anything inside a chunk's data past the IHDR header. The data of every other chunk type is opaque here. IDAT data is not inflated. No pixel is ever decoded.
 - Chunk order past the first and last, except for IHDR. Which types may appear, how many times, and in what order between IHDR and IEND is not checked, with one exception: the file level read (`header`) refuses a second IHDR chunk. The chunk layer (`parse`) does not, and reads it as an ordinary chunk. So an indexed colour file with no PLTE chunk is accepted, where libpng refuses it.
-- A chunk of type IEND that carries data. The PNG specification gives IEND no data, but this reader reads such a chunk as an ordinary chunk, at both layers: the file is accepted when an IEND chunk with no data ends it, and refused when none does. libpng refuses such a chunk before IDAT, and reads a file that ends in one, with a warning. `SPEC.md` states this reading, and the test record names both differences.
+- A chunk of type IEND that carries data. The PNG specification gives IEND no data, but this reader reads such a chunk as an ordinary chunk, at both layers: the file is accepted when an IEND chunk with no data ends it, and refused when none does. libpng refuses such a chunk when it comes before IDAT, and reads a file that ends in one, with a warning. `SPEC.md` states this reading, and the test record names both differences.
 
 ## What you must trust
 
