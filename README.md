@@ -75,6 +75,7 @@ same names. `comparator.json` lists all of them.
 | A file with an interlace byte of 2 is refused: the byte is 0 or 1. | `Spec.rejects_unknown_interlace` |
 | A file with a compression byte of 1 is refused: the only compression method is 0. | `Spec.rejects_nonzero_compression` |
 | A file with a filter byte of 1 is refused: the only filter method is 0. | `Spec.rejects_nonzero_filter` |
+| A file with a second IHDR chunk is refused by the file level read: the PNG specification allows one IHDR chunk. | `Spec.rejects_second_ihdr` |
 | The header reader refuses anything but exactly 13 bytes: here a valid header's first 12 bytes. | `Spec.rejects_header_wrong_length` |
 
 A chunk list is well formed when it is a first chunk, then
@@ -117,7 +118,7 @@ about.
 - That the CRC-32 here is the standard one. The round trip needs no such fact, since the parser and the printer compute the same function. The differential tests against Python zlib's `crc32` are what tie this function to the standard.
 - That the header reader accepts every header the rules in `SPEC.md` allow, and rejects every header they forbid, beyond what the round trip and the table theorem cover. The tests check that behaviour instead: hand built headers for every colour type and allowed depth, the full colour type and depth enumeration against the table, and the rejection cases.
 - Anything inside a chunk's data past the IHDR header. The data of every other chunk type is opaque here. IDAT data is not inflated. No pixel is ever decoded.
-- Chunk order past the first and last. Which types may appear, how many times, and in what order between IHDR and IEND is not checked. A chunk of type IEND that carries data is read as an ordinary chunk.
+- Chunk order past the first and last, except for IHDR. Which types may appear, how many times, and in what order between IHDR and IEND is not checked, with one exception: the file level read (`header`) refuses a second IHDR chunk. The chunk layer (`parse`) does not, and reads it as an ordinary chunk. A chunk of type IEND that carries data is read as an ordinary chunk at both layers.
 
 ## What you must trust
 

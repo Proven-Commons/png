@@ -29,6 +29,11 @@
 
   Colour types other than 0, 2, 3, 4, 6 are not PNG colour
   types, and allow no depth.
+
+  The file level read also turns a file away when a chunk after
+  the first has type IHDR: the PNG specification allows one IHDR
+  chunk, and it comes first. The chunk layer of slice 1 does not
+  look at this; only the file level read does.
 -/
 
 import Png.Parse
@@ -111,18 +116,24 @@ def parseIhdr (bs : List UInt8) : Option Ihdr :=
     else none
   | _ => none
 
+/-- Is this chunk an IHDR chunk, by its type bytes? -/
+def isIHDR (c : Chunk) : Bool := decide (c.typeBytes = ihdrType)
+
 /-- The decoded header of a chunk list: the first chunk's data
-    read as a header, or `none` when there is no first chunk or
-    its data does not read as one. -/
+    read as a header. It is `none` when there is no first chunk,
+    when any later chunk is also of type IHDR (the PNG
+    specification allows one IHDR chunk, and it comes first), or
+    when the first chunk's data does not read as a header. -/
 def headerOf (doc : Doc) : Option Ihdr :=
   match doc with
-  | c :: _ => parseIhdr c.data
+  | c :: rest => if rest.any isIHDR then none else parseIhdr c.data
   | [] => none
 
 /-- Read a whole file at both layers: the chunk list of slice 1,
     and the header decoded from the first chunk's data. A file
     whose first chunk is not a valid IHDR, in the slice 2 sense,
-    is rejected here even when slice 1 accepts it. -/
+    or that holds a second IHDR chunk, is rejected here even when
+    slice 1 accepts it. -/
 def parseFile (bs : List UInt8) : Option (Ihdr × Doc) :=
   match parse bs with
   | some doc => (headerOf doc).map fun h => (h, doc)
@@ -130,16 +141,18 @@ def parseFile (bs : List UInt8) : Option (Ihdr × Doc) :=
 
 /-- A document is fully well formed, with header `hd`, when it
     is well formed at the chunk layer (the `WF` of slice 1), its
-    first chunk's data is the printed form of `hd`, and `hd` is
-    well formed. The header is a parameter, not a witness, so a
-    statement over `WFFull hd doc` can say which header a reader
-    must return. Stated in the shape of `WF`. -/
+    first chunk's data is the printed form of `hd`, `hd` is well
+    formed, and no chunk after the first has type IHDR. The
+    header is a parameter, not a witness, so a statement over
+    `WFFull hd doc` can say which header a reader must return.
+    Stated in the shape of `WF`. -/
 def WFFull (hd : Ihdr) (doc : Doc) : Prop :=
   ∃ (head : Chunk) (mid : List Chunk),
     doc = head :: mid ++ [iendChunk] ∧
     head.typeBytes = ihdrType ∧ head.data = printIhdr hd ∧
     WFHeader hd ∧
     (∀ c ∈ doc, WFChunk c) ∧
-    (∀ c ∈ head :: mid, isIEND c = false)
+    (∀ c ∈ head :: mid, isIEND c = false) ∧
+    (∀ c ∈ mid, c.typeBytes ≠ ihdrType)
 
 end Png

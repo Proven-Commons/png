@@ -122,7 +122,7 @@ theorem checkPair_iff (ct bd : UInt8) :
 /-- A fully well formed document is well formed at the chunk
     layer. -/
 theorem wfFull_wf {hd : Ihdr} {doc : Doc} (h : WFFull hd doc) : WF doc := by
-  obtain ⟨head, mid, hdoc, htype, hdata, -, hall, hnot⟩ := h
+  obtain ⟨head, mid, hdoc, htype, hdata, -, hall, hnot, -⟩ := h
   exact ⟨head, mid, hdoc, htype,
     by rw [hdata]; exact printIhdr_length hd, hall, hnot⟩
 
@@ -132,11 +132,18 @@ theorem wfFull_wf {hd : Ihdr} {doc : Doc} (h : WFFull hd doc) : WF doc := by
 theorem parseFile_print {hd : Ihdr} {doc : Doc} (h : WFFull hd doc) :
     parseFile (print doc) = some (hd, doc) := by
   have hwf : WF doc := wfFull_wf h
-  obtain ⟨head, mid, hdoc, htype, hdata, hwfhd, hall, hnot⟩ := h
+  obtain ⟨head, mid, hdoc, htype, hdata, hwfhd, hall, hnot, hone⟩ := h
+  have hany : (mid ++ [iendChunk]).any isIHDR = false := by
+    rw [List.any_eq_false]
+    intro c hc
+    rcases List.mem_append.mp hc with hm | hm
+    · simpa [isIHDR] using hone c hm
+    · rw [List.mem_singleton.mp hm]
+      decide
   unfold parseFile
   rw [parse_print hwf]
   show (headerOf doc).map (fun x => (x, doc)) = some (hd, doc)
   rw [hdoc]
-  simp [headerOf, hdata, parseIhdr_print hd hwfhd]
+  simp [headerOf, hany, hdata, parseIhdr_print hd hwfhd]
 
 end Png.Proofs

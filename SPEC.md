@@ -26,7 +26,7 @@ The CRC-32 is the one PNG and ZIP share: the ISO 3309 polynomial, reflected, the
 3. Reading stops at a chunk whose type is IEND and whose data is empty. That chunk must be the end of the input: any byte after it rejects the file, and running out of input before such a chunk rejects the file.
 4. The first chunk read has type IHDR and a data length of 13.
 
-A chunk of type IEND that carries data is an ordinary chunk at this layer: reading does not stop at it. No other rule about chunk order is checked: which types may appear, how many times, or in what order past the first and last, is outside this slice. At this layer the contents of the IHDR data, past its length, are not checked: width, height, bit depth, and colour type are read as data like any other. The header read of slice 2, below, is a second read on top of this one and does check them.
+A chunk of type IEND that carries data is an ordinary chunk at this layer: reading does not stop at it. No other rule about chunk order is checked at this layer: which types may appear, how many times, or in what order past the first and last, is outside it. The file level read of slice 2, below, adds one such rule: a single IHDR chunk. At this layer the contents of the IHDR data, past its length, are not checked: width, height, bit depth, and colour type are read as data like any other. The header read of slice 2, below, is a second read on top of this one and does check them.
 
 ## The IHDR header (slice 2)
 
@@ -62,6 +62,8 @@ A colour type other than 0, 2, 3, 4, or 6 allows no bit depth, and reading anyth
 Printing a header writes the 13 bytes back: width and height big endian, then bit depth, colour type, compression zero, filter zero, interlace.
 
 The file level read (`parseFile`) runs the chunk parse of slice 1 and then reads the first chunk's data as a header. A file whose first chunk is not a valid IHDR in this sense is rejected by that read even when the chunk layer accepts it: a file with a width of zero is the plainest case.
+
+The file level read also rejects a file in which any chunk after the first has type IHDR. The PNG specification allows one IHDR chunk, and it comes first (PNG third edition, 11.2), so a second one, wherever it stands, is a rejection; the header is never read from it. The chunk layer alone (`parse`) still reads such a file, since it does not count chunks.
 
 ## Printing
 
@@ -104,6 +106,7 @@ Each property above names its theorem. The theorems are stated in `Spec.lean` an
 | A file with an interlace byte of 2 is refused: the byte is 0 or 1 | `Spec.rejects_unknown_interlace` |
 | A file with a compression byte of 1 is refused: the only compression method is 0 | `Spec.rejects_nonzero_compression` |
 | A file with a filter byte of 1 is refused: the only filter method is 0 | `Spec.rejects_nonzero_filter` |
+| A file with a second IHDR chunk is refused by the file level read | `Spec.rejects_second_ihdr` |
 | The header reader refuses anything but exactly 13 bytes: here a valid header's first 12 bytes | `Spec.rejects_header_wrong_length` |
 
 ## The command-line tool

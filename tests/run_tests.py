@@ -42,9 +42,11 @@ request.
    2^31, a height of 2^31, a width of 2^32 - 1, a height of
    2^32 - 1, a compression byte of 1, a filter byte of 1, an
    interlace byte of 2, a first chunk of length 12) must be
-   rejected. Random well formed headers are built into whole
-   files and checked through `header` for their fields and
-   through `parse` for a byte for byte reprint.
+   rejected. A second IHDR chunk must be rejected by `header`
+   and read by `parse`; an IEND chunk with data is an ordinary
+   chunk at both layers. Random well formed headers are built
+   into whole files and checked through `header` for their
+   fields and through `parse` for a byte for byte reprint.
 
     python3 tests/run_tests.py [--seed N] [--count N]
 
@@ -677,6 +679,60 @@ def run_header_mutations():
     return lines, failures
 
 
+def run_header_chunk_order():
+    """Chunk order cases the file level read settles. A second
+    IHDR chunk, right after the first or after IDAT, is refused
+    by `header` (the PNG specification allows one IHDR chunk),
+    while `parse`, the chunk layer, still reads it as an ordinary
+    chunk. An IEND chunk that carries data is an ordinary chunk at
+    both layers: before IDAT, with a real IEND at the end, the
+    file reads; as the last chunk, with no real IEND after it,
+    the file is refused."""
+    ihdr1 = make_chunk(b"IHDR", ihdr_full(1, 1, 8, 2))
+    ihdr2 = make_chunk(b"IHDR", ihdr_full(2, 2, 8, 2))
+    idat = make_chunk(b"IDAT", zlib.compress(b"\x00\x00\x00\x00"))
+    iend = make_chunk(b"IEND", b"")
+    iend_data = make_chunk(b"IEND", b"\x01\x02")
+    # (name, file, header answer, chunk layer accepts?)
+    cases = [
+        ("a second IHDR right after the first", SIG + ihdr1 + ihdr2 + idat + iend, "none", True),
+        ("a second IHDR after IDAT", SIG + ihdr1 + idat + ihdr2 + iend, "none", True),
+        (
+            "an IEND chunk with data before IDAT, a real IEND at the end",
+            SIG + ihdr1 + iend_data + idat + iend,
+            header_line(1, 1, 8, 2, 0),
+            True,
+        ),
+        ("an IEND chunk with data as the last chunk", SIG + ihdr1 + idat + iend_data, "none", False),
+    ]
+    lines = []
+    failures = []
+    answers, problems = ask_all([header_request(data) for _, data, _, _ in cases])
+    for problem in problems:
+        failures.append(f"chunk order: tool problem: {problem}")
+    agree = 0
+    for (name, _, want, _), ans in zip(cases, answers):
+        if ans == want:
+            agree += 1
+        else:
+            failures.append(f"chunk order {name}, header: want {want!r}, got {ans!r}")
+    lines.append(f"Chunk order cases through `header`: {agree} of {len(cases)} agreements")
+    answers, problems = ask_all([request(data) for _, data, _, _ in cases])
+    for problem in problems:
+        failures.append(f"chunk order, parse: tool problem: {problem}")
+    agree = 0
+    for (name, data, _, chunk_ok), ans in zip(cases, answers):
+        want = ("ok:" + codes(data)) if chunk_ok else "none"
+        if ans == want:
+            agree += 1
+        else:
+            failures.append(f"chunk order {name}, parse: want {want[:60]!r}, got {ans!r}")
+    lines.append(
+        f"The same cases through `parse`, the chunk layer: {agree} of {len(cases)} agreements"
+    )
+    return lines, failures
+
+
 def run_header_random(seed, count=200):
     """Random well formed headers, built into whole files. Each
     file is checked through `header` for its fields and through
@@ -782,6 +838,7 @@ def main():
         run_header_types(),
         run_header_grid(),
         run_header_mutations(),
+        run_header_chunk_order(),
         run_header_random(args.seed),
         run_header_malformed(),
     ):
