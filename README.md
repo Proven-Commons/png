@@ -62,6 +62,9 @@ same names. `comparator.json` lists all of them.
 | Reading the printed bytes of a well formed IHDR header gives the header back. | `Spec.parseIhdr_print` |
 | The depth checker agrees with the written out table of allowed (colour type, bit depth) pairs on every byte pair. | `Spec.checkPair_iff` |
 | Printing a fully well formed document whose first chunk holds the printed header `hd`, and reading it back at both layers, gives back `hd` itself and the document. | `Spec.parseFile_print` |
+| A file the chunk parser accepts is the printed form of the chunk list it returns, and that list is well formed. | `Spec.parse_sound` |
+| A header the header reader accepts is well formed, and the bytes it read are its printed form. So a header that breaks any header rule is refused. | `Spec.parseIhdr_sound` |
+| A file the file level read accepts is the printed form of the chunk list it returns, and that list is fully well formed with the header the read returns. So a file that breaks any rule of either layer, or holds a second IHDR chunk, is refused. | `Spec.parseFile_sound` |
 | A file whose first signature byte is wrong is refused. | `Spec.rejects_bad_signature` |
 | A file whose IHDR chunk carries a CRC that does not match its type and data is refused. | `Spec.rejects_bad_crc` |
 | A file cut short inside its first chunk is refused. | `Spec.rejects_truncated_input` |
@@ -93,13 +96,33 @@ the file level round trip names the header the read must
 return: a reader that answered a fixed header, or swapped the
 width and the height, would not meet it.
 
+Each reader is pinned to its rule in both directions. The
+round trip says it accepts the printed form of every well
+formed value and returns that value; the soundness theorem
+says it accepts nothing else. So the chunk parser accepts a
+file exactly when the file is `print doc` for a well formed
+`doc`, and then returns `doc` (`Spec.parse_print` with
+`Spec.parse_sound`); the header reader accepts 13 bytes
+exactly when they are `printIhdr h` for a well formed `h`
+(`Spec.parseIhdr_print` with `Spec.parseIhdr_sound`); and the
+file level read accepts a file exactly when it is `print doc`
+for a `doc` fully well formed with header `hd`, and then
+returns `hd` and `doc` (`Spec.parseFile_print` with
+`Spec.parseFile_sound`). Every rule in these predicates is
+therefore a proved rejection rule. The named refusal theorems
+below the soundness theorems pin single inputs on top.
+
 The headline theorems rest on the proofs in
-`Proofs/RoundTrip.lean` and `Proofs/Header.lean`, where they
-are `Png.Proofs.parse_print`, `Png.Proofs.parseIhdr_print`,
-`Png.Proofs.checkPair_iff`, and `Png.Proofs.parseFile_print`.
+`Proofs/RoundTrip.lean`, `Proofs/Header.lean`, and
+`Proofs/Sound.lean`, where they are `Png.Proofs.parse_print`,
+`Png.Proofs.parseIhdr_print`, `Png.Proofs.checkPair_iff`,
+`Png.Proofs.parseFile_print`, `Png.Proofs.parse_sound`,
+`Png.Proofs.parseIhdr_sound`, and `Png.Proofs.parseFile_sound`.
 Each checks against two of the standard axioms (`propext`,
 `Quot.sound`), which a reader can confirm with `#print
-axioms`, or by running `lake env lean Proofs/Verify.lean`.
+axioms`, or by running `lake env lean Proofs/Verify.lean`;
+the test harness reads that output for every theorem
+`comparator.json` names, and records it.
 The refusal theorems are single inputs checked in the kernel
 with `decide +kernel`.
 
@@ -114,9 +137,8 @@ about.
 
 ## What is not proved
 
-- That the parser accepts every file the rules in `SPEC.md` allow, and rejects every file they forbid. The round trip does not need either, so neither is proved. The test suite checks that behaviour instead, and the results file records the outcome, including any failure.
+- That the well formedness rules (`WF`, `WFHeader`, `WFFull`, and the table of allowed pairs) are the PNG specification's rules. The proofs tie each reader to its rule exactly, in both directions, but that the rule says what the PNG specification says is a reading: `SPEC.md` states it in words, and the tests compare the readers against a strict oracle written in the harness from those rules.
 - That the CRC-32 here is the standard one. The round trip needs no such fact, since the parser and the printer compute the same function. The differential tests against Python zlib's `crc32` are what tie this function to the standard.
-- That the header reader accepts every header the rules in `SPEC.md` allow, and rejects every header they forbid, beyond what the round trip and the table theorem cover. The tests check that behaviour instead: hand built headers for every colour type and allowed depth, the full colour type and depth enumeration against the table, and the rejection cases.
 - Anything inside a chunk's data past the IHDR header. The data of every other chunk type is opaque here. IDAT data is not inflated. No pixel is ever decoded.
 - Chunk order past the first and last, except for IHDR. Which types may appear, how many times, and in what order between IHDR and IEND is not checked, with one exception: the file level read (`header`) refuses a second IHDR chunk. The chunk layer (`parse`) does not, and reads it as an ordinary chunk. A chunk of type IEND that carries data is read as an ordinary chunk at both layers.
 

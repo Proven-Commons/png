@@ -823,6 +823,9 @@ HEADLINE = [
     "Png.Proofs.parseIhdr_print",
     "Png.Proofs.checkPair_iff",
     "Png.Proofs.parseFile_print",
+    "Png.Proofs.parse_sound",
+    "Png.Proofs.parseIhdr_sound",
+    "Png.Proofs.parseFile_sound",
 ]
 
 

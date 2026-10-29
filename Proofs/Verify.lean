@@ -11,17 +11,24 @@
 
 import Proofs.RoundTrip
 import Proofs.Header
+import Proofs.Sound
 import Proofs.SpecProofs
 
 #print axioms Png.Proofs.parse_print
 #print axioms Png.Proofs.parseIhdr_print
 #print axioms Png.Proofs.checkPair_iff
 #print axioms Png.Proofs.parseFile_print
+#print axioms Png.Proofs.parse_sound
+#print axioms Png.Proofs.parseIhdr_sound
+#print axioms Png.Proofs.parseFile_sound
 
 #print axioms Spec.parse_print
 #print axioms Spec.parseIhdr_print
 #print axioms Spec.checkPair_iff
 #print axioms Spec.parseFile_print
+#print axioms Spec.parse_sound
+#print axioms Spec.parseIhdr_sound
+#print axioms Spec.parseFile_sound
 #print axioms Spec.rejects_bad_signature
 #print axioms Spec.rejects_bad_crc
 #print axioms Spec.rejects_truncated_input

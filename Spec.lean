@@ -49,6 +49,36 @@ theorem Spec.checkPair_iff (ct bd : UInt8) :
 theorem Spec.parseFile_print {hd : Ihdr} {doc : Doc} (h : WFFull hd doc) :
     parseFile (print doc) = some (hd, doc) := sorry
 
+/-! ## What the readers accept
+
+The converse of the round trips: each reader accepts only the
+printed form of a well formed value, and returns that value.
+With the round trips above, this pins each reader exactly, so
+every rule the well formedness predicates state is a rule the
+reader keeps when it refuses a file. -/
+
+/-- A file the chunk parser accepts is the printed form of the
+    chunk list it returns, and that list is well formed. -/
+theorem Spec.parse_sound {bs : List UInt8} {doc : Doc}
+    (h : parse bs = some doc) : WF doc ∧ print doc = bs := sorry
+
+/-- A header the header reader accepts is well formed, and the
+    bytes it read are that header's printed form. So a width or
+    height of zero or of 2^31 or more, a nonzero compression or
+    filter byte, an interlace byte above 1, a depth the colour
+    type does not allow, and any length but 13 are all refused. -/
+theorem Spec.parseIhdr_sound {bs : List UInt8} {h : Ihdr}
+    (hp : parseIhdr bs = some h) : WFHeader h ∧ printIhdr h = bs := sorry
+
+/-- A file the file level read accepts, with header `hd` and
+    chunk list `doc`, is the printed form of `doc`, and `doc` is
+    fully well formed with header `hd`: its first chunk's data is
+    the printed form of `hd`, and no later chunk is an IHDR
+    chunk. -/
+theorem Spec.parseFile_sound {bs : List UInt8} {hd : Ihdr} {doc : Doc}
+    (h : parseFile bs = some (hd, doc)) :
+    WFFull hd doc ∧ print doc = bs := sorry
+
 /-! ## Refused inputs
 
 Single inputs the reader refuses, one for each headline rule of

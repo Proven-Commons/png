@@ -15,11 +15,15 @@
   for every other colour type number both sides are empty. No
   case is left to computation over the whole grid.
 
-  The header round trip is `parseIhdr_print`. The file level
-  claim is `parseFile_print`: a fully well formed document
+  The header round trip is `parseIhdr_print`, and its converse
+  is `parseIhdr_sound`: a header the reader accepts is well
+  formed, and the bytes it read are its printed form. The file
+  level claim is `parseFile_print`: a fully well formed document
   with header `hd` (chunk layer well formed, first chunk the
-  printed form of the well formed header `hd`) prints and reads
-  back whole, and the header the read returns is `hd` itself.
+  printed form of the well formed header `hd`, no second IHDR)
+  prints and reads back whole, and the header the read returns
+  is `hd` itself. Its converse, `parseFile_sound`, is in
+  `Proofs/Sound.lean`.
 -/
 
 import Png
@@ -72,6 +76,88 @@ theorem parseIhdr_print (h : Ihdr) (hwf : WFHeader h) :
   rw [if_neg (by omega : ¬ (w ≥ 2147483648 ∨ hh ≥ 2147483648))]
   rw [if_neg (by decide : ¬ ((0 : UInt8) ≠ 0 ∨ (0 : UInt8) ≠ 0))]
   rw [if_neg hnl, if_pos hpair]
+
+/-- Four bytes read big endian and printed again are the same
+    four bytes. -/
+theorem be32_u32 (a b c d : UInt8) : be32 (u32 a b c d) = [a, b, c, d] := by
+  have ha := a.toNat_lt
+  have hb := b.toNat_lt
+  have hc := c.toNat_lt
+  have hd := d.toNat_lt
+  simp only [be32, u32, List.cons.injEq, and_true]
+  refine ⟨?_, ?_, ?_, ?_⟩ <;> apply UInt8.toNat_inj.mp <;> rw [toUInt8_toNat] <;> omega
+
+/-- Four bytes read big endian give a value below 2^32. -/
+theorem u32_lt (a b c d : UInt8) : u32 a b c d < 4294967296 := by
+  have ha := a.toNat_lt
+  have hb := b.toNat_lt
+  have hc := c.toNat_lt
+  have hd := d.toNat_lt
+  simp only [u32]
+  omega
+
+/-- A byte that is not above 1 is 0 or 1. -/
+theorem uint8_le_one {i : UInt8} (h : ¬ i > 1) : i = 0 ∨ i = 1 := by
+  have h' : ¬ (1 : UInt8).toNat < i.toNat :=
+    fun x => h (UInt8.lt_iff_toNat_lt.mpr x)
+  have : i.toNat = 0 ∨ i.toNat = 1 := by simp at h'; omega
+  rcases this with e | e
+  · left; exact UInt8.toNat_inj.mp (by simpa using e)
+  · right; exact UInt8.toNat_inj.mp (by simpa using e)
+
+/-- The header reader is sound: a header it accepts is well
+    formed, and the bytes it read are that header's printed form.
+    So every rejection rule holds of what it accepts: the width
+    and the height are above zero and below 2^31, the interlace
+    byte is 0 or 1, the depth is one the colour type allows (by
+    `checkPair_iff`, a pair of the written out table), there were
+    exactly 13 bytes, and the compression and filter bytes were
+    zero, since `printIhdr` writes zero there. -/
+theorem parseIhdr_sound {bs : List UInt8} {h : Ihdr}
+    (hp : parseIhdr bs = some h) : WFHeader h ∧ printIhdr h = bs := by
+  unfold parseIhdr at hp
+  split at hp
+  · rename_i w1 w2 w3 w4 h1 h2 h3 h4 bd ct comp filt int rest
+    split at hp
+    · cases hp
+    rename_i hr
+    split at hp
+    · cases hp
+    rename_i hz
+    split at hp
+    · cases hp
+    rename_i hb
+    split at hp
+    · cases hp
+    rename_i hc
+    split at hp
+    · cases hp
+    rename_i hi
+    split at hp
+    · rename_i hpair
+      cases hp
+      have hr' : rest = [] := Decidable.of_not_not hr
+      have hcomp : comp = 0 := Decidable.of_not_not (not_or.mp hc).1
+      have hfilt : filt = 0 := Decidable.of_not_not (not_or.mp hc).2
+      subst hr' hcomp hfilt
+      refine ⟨⟨(by omega : 0 < u32 w1 w2 w3 w4),
+        (by omega : u32 w1 w2 w3 w4 < 2147483648),
+        (by omega : 0 < u32 h1 h2 h3 h4),
+        (by omega : u32 h1 h2 h3 h4 < 2147483648),
+        uint8_le_one hi, hpair⟩, ?_⟩
+      show be32 (u32 w1 w2 w3 w4) ++ be32 (u32 h1 h2 h3 h4)
+        ++ [bd, ct, 0, 0, int] = _
+      rw [be32_u32, be32_u32]
+      rfl
+    · cases hp
+  · cases hp
+
+/-- The header reader, exactly: it accepts the bytes `bs` with
+    header `h` if and only if `h` is well formed and `bs` is its
+    printed form. -/
+theorem parseIhdr_iff (bs : List UInt8) (h : Ihdr) :
+    parseIhdr bs = some h ↔ WFHeader h ∧ printIhdr h = bs :=
+  ⟨parseIhdr_sound, fun ⟨hwf, hp⟩ => hp ▸ parseIhdr_print h hwf⟩
 
 /-- The table, exactly: a depth goes with a colour type under
     the checker if and only if the pair is in the written out

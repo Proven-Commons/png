@@ -1,8 +1,9 @@
 /-
   Proofs of the statements in `Spec.lean`, under the same names.
 
-  The round trips and the table are the theorems proved in
-  `Proofs/RoundTrip.lean` and `Proofs/Header.lean`. The refusals
+  The round trips, the table, and the soundness statements are
+  the theorems proved in `Proofs/RoundTrip.lean`,
+  `Proofs/Header.lean`, and `Proofs/Sound.lean`. The refusals
   are single inputs, checked in the kernel with `decide +kernel`:
   no native evaluation, which the bar forbids.
 -/
@@ -10,6 +11,7 @@
 import Png
 import Proofs.RoundTrip
 import Proofs.Header
+import Proofs.Sound
 
 open Png
 
@@ -29,6 +31,20 @@ theorem Spec.checkPair_iff (ct bd : UInt8) :
 theorem Spec.parseFile_print {hd : Ihdr} {doc : Doc} (h : WFFull hd doc) :
     parseFile (print doc) = some (hd, doc) :=
   Png.Proofs.parseFile_print h
+
+
+theorem Spec.parse_sound {bs : List UInt8} {doc : Doc}
+    (h : parse bs = some doc) : WF doc ∧ print doc = bs :=
+  Png.Proofs.parse_sound h
+
+theorem Spec.parseIhdr_sound {bs : List UInt8} {h : Ihdr}
+    (hp : parseIhdr bs = some h) : WFHeader h ∧ printIhdr h = bs :=
+  Png.Proofs.parseIhdr_sound hp
+
+theorem Spec.parseFile_sound {bs : List UInt8} {hd : Ihdr} {doc : Doc}
+    (h : parseFile bs = some (hd, doc)) :
+    WFFull hd doc ∧ print doc = bs :=
+  Png.Proofs.parseFile_sound h
 
 
 theorem Spec.rejects_bad_signature :

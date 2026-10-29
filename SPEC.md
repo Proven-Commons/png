@@ -77,9 +77,15 @@ Slice 2 adds three proved claims:
 
 - The header round trip: reading the printed bytes of a well formed header gives the header back. Well formed means the width and height are above zero and below 2^31, the interlace byte is 0 or 1, and the bit depth is one the colour type allows.
 - The table is exact: the depth checker agrees with the table above, written out as a list of (colour type, bit depth) pairs, on every colour type byte and every bit depth byte.
-- The file level round trip: a document that is well formed at the chunk layer and whose first chunk's data is the printed form of a well formed header `hd` prints and reads back whole, and the header the read returns is `hd` itself, not merely some header.
+- The file level round trip: a document that is well formed at the chunk layer, whose first chunk's data is the printed form of a well formed header `hd`, and in which no later chunk has type IHDR, prints and reads back whole, and the header the read returns is `hd` itself, not merely some header.
 
-No claim is made that the parser accepts every file the rules above allow, or rejects every file they forbid, beyond what the round trip needs. The test suite checks that behaviour against real PNG files built with Python's zlib and against a strict reading of these rules, and the results record the counts.
+Each round trip has a proved converse, so each reader is pinned to its rule in both directions:
+
+- The chunk parser is sound: a file it accepts is the printed form of the chunk list it returns, and that list is well formed. With the round trip of slice 1, `parse` accepts a file exactly when it is the printed form of a well formed chunk list, and then returns that list.
+- The header reader is sound: a header it accepts is well formed, and the 13 bytes it read are that header's printed form. So a width or height of zero or of 2^31 or more, a nonzero compression or filter byte, an interlace byte above 1, a depth the colour type does not allow (by the table claim), and any length but 13 are all refused.
+- The file level read is sound: a file it accepts is the printed form of the chunk list it returns, that list is well formed at the chunk layer, its first chunk's data is the printed form of the header the read returns, that header is well formed, and no later chunk has type IHDR.
+
+So every rule of this specification that the well formedness rules state is a proved rejection rule. What is not proved is that those rules are the PNG specification's: that is the reading this document pins. The test suite checks the readers against real PNG files built with Python's zlib and against a strict reading of these rules written in the harness, and the results record the counts.
 
 The round trip needs no fact about CRC-32 itself: the parser and the printer compute the same function of the same bytes, so a printed file passes its own CRC checks by construction. That the function is the standard CRC-32 rests on the differential tests against Python zlib's `crc32`.
 
@@ -93,6 +99,9 @@ Each property above names its theorem. The theorems are stated in `Spec.lean` an
 | Reading the printed bytes of a well formed IHDR header gives the header back | `Spec.parseIhdr_print` |
 | The depth checker agrees with the written out table of allowed (colour type, bit depth) pairs on every byte pair | `Spec.checkPair_iff` |
 | Printing a fully well formed document whose first chunk holds the printed header `hd`, and reading it back at both layers, gives back `hd` itself and the document | `Spec.parseFile_print` |
+| A file the chunk parser accepts is the printed form of the chunk list it returns, and that list is well formed | `Spec.parse_sound` |
+| A header the header reader accepts is well formed, and the bytes it read are its printed form | `Spec.parseIhdr_sound` |
+| A file the file level read accepts is the printed form of the chunk list it returns, and that list is fully well formed with the header the read returns | `Spec.parseFile_sound` |
 | A file whose first signature byte is wrong is refused | `Spec.rejects_bad_signature` |
 | A file whose IHDR chunk carries a CRC that does not match its type and data is refused | `Spec.rejects_bad_crc` |
 | A file cut short inside its first chunk is refused | `Spec.rejects_truncated_input` |
