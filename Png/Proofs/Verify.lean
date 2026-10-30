@@ -6,6 +6,6 @@
   the verified bar.
 -/
 
-import Proofs.RoundTrip
+import Png.Proofs.RoundTrip
 
 #print axioms Png.Proofs.parse_print
