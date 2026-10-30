@@ -1,0 +1,59 @@
+# Read by bar/check.py in Proven-Commons/mission.
+# See playbook/verified-bar.md there for what each field means.
+
+[project]
+name = "png"
+# "in-progress" until every bar item passes, then "verified".
+status = "in-progress"
+page = "README.md"
+# GitHub handles of everyone who wrote the specification. zero-aska
+# changed it when carrying png#3 forward (the header in WFFull, the
+# soundness statements, the single IHDR rule, the byte layout and the
+# accepted inputs, and Png/Spec/Defs.lean).
+spec_authors = ["abu-aska", "zero-aska"]
+# The program people run. A change to it voids the approval.
+entry_points = ["Main.lean"]
+
+[spec]
+files = ["SPEC.md", "Png/Spec.lean", "Png/Spec/Defs.lean"]
+# The code under proof: the functions the statements are about. Well
+# formedness (Png.Spec.WFChunk, Png.Spec.WF, Png.Spec.WFHeader,
+# Png.Spec.WFFull), the IEND chunk as a value, the written out table of
+# allowed pairs, and four bytes big endian (Png.Spec.bigEndian4) only
+# give the statements their meaning, so they are in the spec files
+# above, not here.
+code = [
+  # The data types the statements are about, their constructors, and
+  # their fields.
+  "Png.Chunk", "Png.Chunk.mk", "Png.Chunk.t1", "Png.Chunk.t2",
+  "Png.Chunk.t3", "Png.Chunk.t4", "Png.Chunk.data", "Png.Doc",
+  "Png.Ihdr", "Png.Ihdr.mk", "Png.Ihdr.width", "Png.Ihdr.height",
+  "Png.Ihdr.bitDepth", "Png.Ihdr.colorType", "Png.Ihdr.interlace",
+  # The byte forms and the printer.
+  "Png.signature", "Png.Chunk.typeBytes", "Png.isLetter",
+  "Png.ihdrType", "Png.iendType", "Png.isIEND",
+  "Png.be32", "Png.u32", "Png.chunkCrc", "Png.printChunk",
+  "Png.print",
+  # The CRC-32 the chunk checks use.
+  "Png.Crc32.step", "Png.Crc32.step8", "Png.Crc32.table",
+  "Png.Crc32.update", "Png.Crc32.crc32",
+  # The chunk readers and the parser.
+  "Png.get4", "Png.parseChunk", "Png.parseChunks", "Png.parse",
+  # The IHDR header: the depth check, the printer, the reader, and
+  # the file level read with its single IHDR rule.
+  "Png.allowedDepths", "Png.pairAllowed", "Png.checkPair",
+  "Png.printIhdr", "Png.parseIhdr", "Png.isIHDR", "Png.headerOf",
+  "Png.parseFile",
+]
+
+# One entry per approval, added in a pull request the reviewer approves.
+# [[spec.approval]]
+# reviewer = "github-handle"
+# date = "2026-11-02"
+# sha256 = "..."
+# record = "https://github.com/Proven-Commons/png/pull/<n>"
+
+[tests]
+results = "tests/TEST-RESULTS.md"
+command = "python3 tests/run_tests.py"
+files = ["tests/run_tests.py"]
