@@ -69,6 +69,9 @@ theorem Spec.isLetter_iff (b : UInt8) :
 
 theorem Spec.ihdrType_eq : ihdrType = [73, 72, 68, 82] := rfl
 
+theorem Spec.typeBytes_eq (c : Chunk) :
+    c.typeBytes = [c.t1, c.t2, c.t3, c.t4] := rfl
+
 theorem Spec.isIEND_iff (c : Chunk) :
     isIEND c = true ↔ [c.t1, c.t2, c.t3, c.t4] = [73, 69, 78, 68] ∧ c.data = [] :=
   Png.Proofs.isIEND_iff c

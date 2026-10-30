@@ -96,8 +96,9 @@ printer, but say nothing of the bytes the printer writes: a
 printer and a reader that both put the height before the width,
 or both wrote lengths least significant byte first, would meet
 them. The statements here fix those bytes: the chunk layout, the
-13 bytes of the header, the letters a chunk type may use, and the
-type bytes of IHDR and IEND. With the round trips and the
+13 bytes of the header, the letters a chunk type may use, the
+type bytes the rules compare, and the type bytes of IHDR and
+IEND. With the round trips and the
 converses above, they fix what each reader accepts and returns
 for every input: the chunk parser accepts exactly the bytes
 `Spec.print_layout` gives for a well formed chunk list, and the
@@ -139,6 +140,12 @@ theorem Spec.isLetter_iff (b : UInt8) :
 /-- The type bytes the chunk rules require of the first chunk
     are I, H, D, R, in ASCII. -/
 theorem Spec.ihdrType_eq : ihdrType = [73, 72, 68, 82] := sorry
+
+/-- The type bytes the chunk rules compare with `ihdrType`
+    (`Spec.WF`, `Spec.WFFull`, and the readers) are a chunk's four
+    type bytes, in the order the chunk printer writes them. -/
+theorem Spec.typeBytes_eq (c : Chunk) :
+    c.typeBytes = [c.t1, c.t2, c.t3, c.t4] := sorry
 
 /-- The IEND chunk, at which reading stops and which ends a well
     formed chunk list, is a chunk with type bytes I, E, N, D, in

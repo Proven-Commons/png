@@ -95,7 +95,7 @@ The round trips and their converses are stated in terms of the printers, so on t
 
 - The chunk printer writes the layout of the Chunks section above (`Spec.print_layout`).
 - The header printer writes the 13 bytes in the order of the IHDR section above (`Spec.printIhdr_layout`).
-- The letter test, the IHDR type bytes, and the IEND chunk test are the ones the checks above name (`Spec.isLetter_iff`, `Spec.ihdrType_eq`, `Spec.isIEND_iff`).
+- The letter test, the IHDR type bytes, the type bytes a chunk is compared by, and the IEND chunk test are the ones the checks above name (`Spec.isLetter_iff`, `Spec.ihdrType_eq`, `Spec.typeBytes_eq`, `Spec.isIEND_iff`).
 
 With the round trips and their converses, these fix which bytes each reader accepts and what it returns, for every input, up to the CRC-32 function, which the chunk layout names as the code has it. Two accepted inputs are stated as worked examples: a real 4 by 3 file is read as width 4, height 3, bit depth 8, colour type 6, no interlace (`Spec.reads_real_file_header`), and the 13 bytes of a 1920 by 1080 header as width 1920 and height 1080 (`Spec.reads_header_1920x1080`). The test harness reads both from `Spec.lean` and checks them against its own reading of the bytes and against libpng.
 
@@ -120,6 +120,7 @@ Each property above names its theorem. The theorems are stated in `Spec.lean` an
 | The header printer writes the width and the height, four bytes big endian each, then the bit depth, the colour type, zero, zero, and the interlace byte | `Spec.printIhdr_layout` |
 | The letter test holds of the bytes 65 to 90 and 97 to 122, and of no other | `Spec.isLetter_iff` |
 | The IHDR type bytes are 73, 72, 68, 82 | `Spec.ihdrType_eq` |
+| The type bytes the rules compare are a chunk's four type bytes, in order | `Spec.typeBytes_eq` |
 | The IEND chunk is type bytes 73, 69, 78, 68 with no data | `Spec.isIEND_iff` |
 | A real 4 by 3 file is read with header width 4, height 3, bit depth 8, colour type 6, no interlace | `Spec.reads_real_file_header` |
 | The 13 bytes of a 1920 by 1080 header are read as width 1920, height 1080 | `Spec.reads_header_1920x1080` |

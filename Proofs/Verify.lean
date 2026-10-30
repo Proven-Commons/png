@@ -38,6 +38,7 @@ import Proofs.SpecProofs
 #print axioms Spec.printIhdr_layout
 #print axioms Spec.isLetter_iff
 #print axioms Spec.ihdrType_eq
+#print axioms Spec.typeBytes_eq
 #print axioms Spec.isIEND_iff
 #print axioms Spec.reads_real_file_header
 #print axioms Spec.reads_header_1920x1080

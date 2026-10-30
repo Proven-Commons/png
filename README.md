@@ -72,6 +72,7 @@ same names. `comparator.json` lists all of them.
 | The header printer writes the width in four bytes big endian, then the height in four bytes big endian, then the bit depth, the colour type, a compression byte of zero, a filter byte of zero, and the interlace byte. | `Spec.printIhdr_layout` |
 | The letter test the chunk rules use holds of the ASCII letters A to Z and a to z, and of no other byte. | `Spec.isLetter_iff` |
 | The type bytes required of the first chunk are I, H, D, R. | `Spec.ihdrType_eq` |
+| The type bytes the chunk rules compare are a chunk's four type bytes, in the order the printer writes them. | `Spec.typeBytes_eq` |
 | The IEND chunk, where reading stops, is a chunk with type bytes I, E, N, D and no data. | `Spec.isIEND_iff` |
 | A real 4 by 3 PNG file (an IHDR, an IDAT with zlib compressed pixels, and IEND) is read with its own header: width 4, height 3, bit depth 8, colour type 6, no interlace. | `Spec.reads_real_file_header` |
 | The 13 bytes of a 1920 by 1080 header are read as width 1920 and height 1080, bit depth 8, colour type 2, no interlace. | `Spec.reads_header_1920x1080` |
@@ -137,11 +138,12 @@ The round trips and the soundness theorems are stated in terms
 of the printers. The layout theorems fix what the printers
 write: `Spec.print_layout` the chunk layout, and
 `Spec.printIhdr_layout` the 13 header bytes. `Spec.isLetter_iff`,
-`Spec.ihdrType_eq`, and `Spec.isIEND_iff` fix the letters and
-type bytes the rules name. Together with the round trips and the
-soundness theorems, they fix which bytes each reader accepts and
-what it returns, for every input. The one function they leave as
-the code has it is the CRC-32 (see below).
+`Spec.ihdrType_eq`, `Spec.typeBytes_eq`, and `Spec.isIEND_iff`
+fix the letters and type bytes the rules name. Together with the
+round trips and the soundness theorems, they fix which bytes each
+reader accepts and what it returns, for every input. The one
+function they leave as the code has it is the CRC-32 (see
+below).
 
 The headline theorems rest on the proofs in
 `Proofs/RoundTrip.lean`, `Proofs/Header.lean`,
@@ -158,10 +160,10 @@ Proofs/Verify.lean`; the test harness reads that output for
 every theorem `comparator.json` names, and records it.
 The refusal theorems and the two accepted inputs are single
 inputs checked in the kernel with `decide +kernel`, and
-`Spec.ihdrType_eq` holds by definition. The test harness reads
-the two accepted inputs from `Spec.lean` and checks the header
-each states against its own big endian reading of the bytes,
-the tool's `header` answer, and libpng's.
+`Spec.ihdrType_eq` and `Spec.typeBytes_eq` hold by definition.
+The test harness reads the two accepted inputs from `Spec.lean`
+and checks the header each states against its own big endian
+reading of the bytes, the tool's `header` answer, and libpng's.
 
 The code is in `Png/Value.lean` (the chunk type and the
 printer), `Png/Parse.lean` (the parser), `Png/Crc32.lean` (the

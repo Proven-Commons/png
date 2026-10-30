@@ -28,8 +28,10 @@ def bigEndian4 (n : Nat) : List UInt8 :=
   [UInt8.ofNat (n / 16777216 % 256), UInt8.ofNat (n / 65536 % 256),
    UInt8.ofNat (n / 256 % 256), UInt8.ofNat (n % 256)]
 
-/-- The IEND chunk itself: type IEND, no data. -/
-def iendChunk : Chunk := ⟨73, 69, 78, 68, []⟩
+/-- The IEND chunk itself: type bytes I, E, N, D, in ASCII, and
+    no data. The fields are named, so the value does not depend
+    on the order in which `Png.Chunk` declares them. -/
+def iendChunk : Chunk := { t1 := 73, t2 := 69, t3 := 78, t4 := 68, data := [] }
 
 /-- The per-chunk part of well formedness: each type byte is an
     ASCII letter, and the data length stays below 2^31, as the PNG

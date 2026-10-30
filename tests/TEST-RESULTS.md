@@ -45,7 +45,7 @@ Each file is read by libpng (`tests/libpng_header.c`, built against the system l
 
 ## Axiom check
 
-The output of `#print axioms` for the 11 headline theorems and the 29 theorems `comparator.json` names, from `lake env lean Proofs/Verify.lean`. The harness reads the names, and fails on any axiom but `propext`, `Classical.choice`, `Quot.sound`. A self-test on planted output (a `sorryAx`, an axiom of a proof's own, a missing line) runs first.
+The output of `#print axioms` for the 11 headline theorems and the 30 theorems `comparator.json` names, from `lake env lean Proofs/Verify.lean`. The harness reads the names, and fails on any axiom but `propext`, `Classical.choice`, `Quot.sound`. A self-test on planted output (a `sorryAx`, an axiom of a proof's own, a missing line) runs first.
 
 - 'Png.Proofs.parse_print' depends on axioms: [propext, Quot.sound]
 - 'Png.Proofs.parseIhdr_print' depends on axioms: [propext, Quot.sound]
@@ -69,6 +69,7 @@ The output of `#print axioms` for the 11 headline theorems and the 29 theorems `
 - 'Spec.printIhdr_layout' depends on axioms: [propext]
 - 'Spec.isLetter_iff' depends on axioms: [propext]
 - 'Spec.ihdrType_eq' depends on axioms: []
+- 'Spec.typeBytes_eq' depends on axioms: []
 - 'Spec.isIEND_iff' depends on axioms: [propext]
 - 'Spec.reads_real_file_header' depends on axioms: [propext, Quot.sound]
 - 'Spec.reads_header_1920x1080' depends on axioms: [propext, Quot.sound]
