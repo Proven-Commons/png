@@ -8,16 +8,18 @@ status = "in-progress"
 page = "README.md"
 # GitHub handles of everyone who wrote the specification. zero-aska
 # changed it when carrying png#3 forward (the header in WFFull, the
-# soundness statements, the single IHDR rule, and Spec/Defs.lean).
+# soundness statements, the single IHDR rule, the byte layout and the
+# accepted inputs, and Png/Spec/Defs.lean).
 spec_authors = ["abu-aska", "zero-aska"]
 # The program people run. A change to it voids the approval.
 entry_points = ["Main.lean"]
 
 [spec]
-files = ["SPEC.md", "Spec.lean", "Spec/Defs.lean"]
+files = ["SPEC.md", "Png/Spec.lean", "Png/Spec/Defs.lean"]
 # The code under proof: the functions the statements are about. Well
-# formedness (Spec.WFChunk, Spec.WF, Spec.WFHeader, Spec.WFFull), the
-# IEND chunk as a value, and the written out table of allowed pairs only
+# formedness (Png.Spec.WFChunk, Png.Spec.WF, Png.Spec.WFHeader,
+# Png.Spec.WFFull), the IEND chunk as a value, the written out table of
+# allowed pairs, and four bytes big endian (Png.Spec.bigEndian4) only
 # give the statements their meaning, so they are in the spec files
 # above, not here.
 code = [

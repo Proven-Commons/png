@@ -29,9 +29,9 @@ Written by `tests/run_tests.py`. Rerun it to check these numbers.
 - Random header files through `parse`: 200 of 200 reprinted byte for byte
 - Malformed header requests answered error: 3 of 3
 - Header requests with no codes answered none: 2 of 2
-- Accepted inputs stated in Spec.lean, read from that file: 2 of 2 agree with the harness's own reading of the bytes
-- Accepted inputs stated in Spec.lean, through `header`: 2 of 2 answered with the stated header
-- Accepted inputs stated in Spec.lean, through libpng (built 1.6.43, running 1.6.43), decoded in full: 2 of 2 read with the stated header
+- Accepted inputs stated in Png/Spec.lean, read from that file: 2 of 2 agree with the harness's own reading of the bytes
+- Accepted inputs stated in Png/Spec.lean, through `header`: 2 of 2 answered with the stated header
+- Accepted inputs stated in Png/Spec.lean, through libpng (built 1.6.43, running 1.6.43), decoded in full: 2 of 2 read with the stated header
 
 ## libpng comparison of the header read
 
@@ -45,7 +45,7 @@ Each file is read by libpng (`tests/libpng_header.c`, built against the system l
 
 ## Axiom check
 
-The output of `#print axioms` for the 11 headline theorems and the 30 theorems `comparator.json` names, from `lake env lean Proofs/Verify.lean`. The harness reads the names, and fails on any axiom but `propext`, `Classical.choice`, `Quot.sound`. A self-test on planted output (a `sorryAx`, an axiom of a proof's own, a missing line) runs first.
+The output of `#print axioms` for the 11 headline theorems and the 30 theorems `comparator.json` names, from `lake env lean Png/Proofs/Verify.lean`. The harness reads the names, and fails on any axiom but `propext`, `Classical.choice`, `Quot.sound`. A self-test on planted output (a `sorryAx`, an axiom of a proof's own, a missing line) runs first.
 
 - 'Png.Proofs.parse_print' depends on axioms: [propext, Quot.sound]
 - 'Png.Proofs.parseIhdr_print' depends on axioms: [propext, Quot.sound]
@@ -58,36 +58,36 @@ The output of `#print axioms` for the 11 headline theorems and the 30 theorems `
 - 'Png.Proofs.printIhdr_layout' depends on axioms: [propext]
 - 'Png.Proofs.isLetter_iff' depends on axioms: [propext]
 - 'Png.Proofs.isIEND_iff' depends on axioms: [propext]
-- 'Spec.parse_print' depends on axioms: [propext, Quot.sound]
-- 'Spec.parseIhdr_print' depends on axioms: [propext, Quot.sound]
-- 'Spec.checkPair_iff' depends on axioms: [propext, Quot.sound]
-- 'Spec.parseFile_print' depends on axioms: [propext, Quot.sound]
-- 'Spec.parse_sound' depends on axioms: [propext, Quot.sound]
-- 'Spec.parseIhdr_sound' depends on axioms: [propext, Quot.sound]
-- 'Spec.parseFile_sound' depends on axioms: [propext, Quot.sound]
-- 'Spec.print_layout' depends on axioms: [propext, Quot.sound]
-- 'Spec.printIhdr_layout' depends on axioms: [propext]
-- 'Spec.isLetter_iff' depends on axioms: [propext]
-- 'Spec.ihdrType_eq' depends on axioms: []
-- 'Spec.typeBytes_eq' depends on axioms: []
-- 'Spec.isIEND_iff' depends on axioms: [propext]
-- 'Spec.reads_real_file_header' depends on axioms: [propext, Quot.sound]
-- 'Spec.reads_header_1920x1080' depends on axioms: [propext, Quot.sound]
-- 'Spec.rejects_bad_signature' depends on axioms: [propext, Quot.sound]
-- 'Spec.rejects_bad_crc' depends on axioms: [propext, Quot.sound]
-- 'Spec.rejects_truncated_input' depends on axioms: [propext, Quot.sound]
-- 'Spec.rejects_first_chunk_length_12' depends on axioms: [propext, Quot.sound]
-- 'Spec.rejects_zero_width' depends on axioms: [propext, Quot.sound]
-- 'Spec.rejects_zero_height' depends on axioms: [propext, Quot.sound]
-- 'Spec.rejects_width_at_cap' depends on axioms: [propext, Quot.sound]
-- 'Spec.rejects_height_at_cap' depends on axioms: [propext, Quot.sound]
-- 'Spec.rejects_illegal_depth' depends on axioms: [propext, Quot.sound]
-- 'Spec.rejects_unknown_colour_type' depends on axioms: [propext, Quot.sound]
-- 'Spec.rejects_unknown_interlace' depends on axioms: [propext, Quot.sound]
-- 'Spec.rejects_nonzero_compression' depends on axioms: [propext, Quot.sound]
-- 'Spec.rejects_nonzero_filter' depends on axioms: [propext, Quot.sound]
-- 'Spec.rejects_second_ihdr' depends on axioms: [propext, Quot.sound]
-- 'Spec.rejects_header_wrong_length' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.parse_print' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.parseIhdr_print' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.checkPair_iff' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.parseFile_print' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.parse_sound' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.parseIhdr_sound' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.parseFile_sound' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.print_layout' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.printIhdr_layout' depends on axioms: [propext]
+- 'Png.Spec.isLetter_iff' depends on axioms: [propext]
+- 'Png.Spec.ihdrType_eq' depends on axioms: []
+- 'Png.Spec.typeBytes_eq' depends on axioms: []
+- 'Png.Spec.isIEND_iff' depends on axioms: [propext]
+- 'Png.Spec.reads_real_file_header' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.reads_header_1920x1080' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.rejects_bad_signature' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.rejects_bad_crc' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.rejects_truncated_input' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.rejects_first_chunk_length_12' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.rejects_zero_width' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.rejects_zero_height' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.rejects_width_at_cap' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.rejects_height_at_cap' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.rejects_illegal_depth' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.rejects_unknown_colour_type' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.rejects_unknown_interlace' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.rejects_nonzero_compression' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.rejects_nonzero_filter' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.rejects_second_ihdr' depends on axioms: [propext, Quot.sound]
+- 'Png.Spec.rejects_header_wrong_length' depends on axioms: [propext, Quot.sound]
 
 ## Outcome
 

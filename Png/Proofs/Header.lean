@@ -23,16 +23,16 @@
   printed form of the well formed header `hd`, no second IHDR)
   prints and reads back whole, and the header the read returns
   is `hd` itself. Its converse, `parseFile_sound`, is in
-  `Proofs/Sound.lean`.
+  `Png/Proofs/Sound.lean`.
 -/
 
 import Png
-import Spec.Defs
-import Proofs.RoundTrip
+import Png.Spec.Defs
+import Png.Proofs.RoundTrip
 
 namespace Png.Proofs
 
-open Png Spec
+open Png Png.Spec
 
 /-- One step of the header reader, stated for rewriting: 13
     bytes at the front of the input, with whatever follows. -/

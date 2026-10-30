@@ -17,7 +17,7 @@
 
   Well formedness, the rule the round trip is stated over, is not
   here: it gives the statements their meaning and no code uses it,
-  so it is part of the specification, in `Spec/Defs.lean`.
+  so it is part of the specification, in `Png/Spec/Defs.lean`.
 -/
 
 import Png.Crc32

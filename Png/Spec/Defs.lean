@@ -1,5 +1,5 @@
 /-
-  The definitions the statements in `Spec.lean` use besides the
+  The definitions the statements in `Png/Spec.lean` use besides the
   code under proof: four bytes big endian (`bigEndian4`), the
   IEND chunk as a value, well formedness at
   the chunk layer (`WFChunk`, `WF`), the written out table of
@@ -7,14 +7,14 @@
   header (`WFHeader`), and full well formedness of a document
   with its header (`WFFull`). They give the statements their
   meaning, and the readers and printers do not use them, so they
-  are part of the specification, with `Spec.lean` and `SPEC.md`,
+  are part of the specification, with `Png/Spec.lean` and `SPEC.md`,
   not of the code (`bar.toml` lists the code). A change here
   changes the spec hash, and so voids an approval.
 -/
 
 import Png
 
-namespace Spec
+namespace Png.Spec
 
 open Png
 
@@ -55,7 +55,7 @@ def WF (doc : Doc) : Prop :=
 /-- The allowed (colour type, bit depth) pairs, written out in
     full, as the PNG specification's table gives them. The
     checker in `Png/Header.lean` is built from a per-type table;
-    `Spec.checkPair_iff` says the two agree on every colour type
+    `Png.Spec.checkPair_iff` says the two agree on every colour type
     byte and every bit depth byte. -/
 def allowedPairs : List (Nat × Nat) :=
   [(0, 1), (0, 2), (0, 4), (0, 8), (0, 16),
@@ -89,4 +89,4 @@ def WFFull (hd : Ihdr) (doc : Doc) : Prop :=
     (∀ c ∈ head :: mid, isIEND c = false) ∧
     (∀ c ∈ mid, c.typeBytes ≠ ihdrType)
 
-end Spec
+end Png.Spec

@@ -38,7 +38,7 @@
   The written out table of allowed pairs, and well formedness of
   a header and of a whole document, give the statements their
   meaning and no code uses them, so they are part of the
-  specification, in `Spec/Defs.lean`.
+  specification, in `Png/Spec/Defs.lean`.
 -/
 
 import Png.Parse

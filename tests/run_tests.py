@@ -3,8 +3,8 @@
 
 Seven parts. Parts 1 to 4 are the slice 1 suite, unchanged.
 Part 5 is slice 2: the IHDR header read through the `header`
-request. Part 6 checks the accepted inputs stated in Spec.lean.
-Part 7 compares the header read with libpng, where libpng is
+request. Part 6 checks the accepted inputs stated in
+Png/Spec.lean. Part 7 compares the header read with libpng, where libpng is
 installed.
 
 1. Real PNG files built with Python zlib: an IHDR chunk (the
@@ -51,10 +51,10 @@ installed.
    files and checked through `header` for their fields and
    through `parse` for a byte for byte reprint.
 
-6. The accepted inputs stated in Spec.lean
-   (Spec.reads_real_file_header, a whole file, and
-   Spec.reads_header_1920x1080, 13 header bytes, wrapped in a
-   file with an all zero image), read from that file. The
+6. The accepted inputs stated in Png/Spec.lean
+   (Png.Spec.reads_real_file_header, a whole file, and
+   Png.Spec.reads_header_1920x1080, 13 header bytes, wrapped in
+   a file with an all zero image), read from that file. The
    stated header must match the harness's own big endian
    reading of the bytes, the image data must inflate to the
    size that header gives, the tool's `header` answer must be
@@ -1095,17 +1095,17 @@ def run_header_malformed():
 
 
 # ---------------------------------------------------------------- the
-# accepted inputs stated in Spec.lean. Two statements there give an
-# input and the header the reader returns for it:
-# Spec.reads_real_file_header (a whole file) and
-# Spec.reads_header_1920x1080 (13 header bytes). The bytes and the
-# fields are read from Spec.lean itself, so the check is of the
-# statements as written, and each is checked three ways: the
+# accepted inputs stated in Png/Spec.lean. Two statements there give
+# an input and the header the reader returns for it:
+# Png.Spec.reads_real_file_header (a whole file) and
+# Png.Spec.reads_header_1920x1080 (13 header bytes). The bytes and
+# the fields are read from Png/Spec.lean itself, so the check is of
+# the statements as written, and each is checked three ways: the
 # harness's own reading of the bytes (big endian width and height,
 # zlib for the CRCs and the image data), the tool's `header` answer,
 # and libpng's answer where libpng is installed.
 
-SPEC_LEAN = ROOT / "Spec.lean"
+SPEC_LEAN = ROOT / "Png" / "Spec.lean"
 
 
 def lean_bytes(text):
@@ -1129,21 +1129,21 @@ def lean_fields(text):
 
 def spec_examples():
     """(theorem, file, the 13 header bytes, the stated fields), read
-    from Spec.lean. The header only statement is wrapped in a whole
-    file: its 13 bytes as the IHDR data, an IDAT chunk holding an
+    from Png/Spec.lean. The header only statement is wrapped in a
+    whole file: its 13 bytes as the IHDR data, an IDAT chunk holding an
     all zero image of that size, and IEND."""
     src = SPEC_LEAN.read_text(encoding="utf-8")
     found = []
     m = re.search(
-        r"theorem Spec\.reads_real_file_header :\s*\(parseFile \(\[([0-9,\s]*)\]\s*"
+        r"theorem Png\.Spec\.reads_real_file_header :\s*\(parseFile \(\[([0-9,\s]*)\]\s*"
         r":\s*List UInt8\)\)\.map Prod\.fst =\s*some \{([^}]*)\}",
         src,
     )
     if m and lean_fields(m.group(2)):
         data = lean_bytes(m.group(1))
-        found.append(("Spec.reads_real_file_header", data, data[16:29], lean_fields(m.group(2))))
+        found.append(("Png.Spec.reads_real_file_header", data, data[16:29], lean_fields(m.group(2))))
     m = re.search(
-        r"theorem Spec\.reads_header_1920x1080 :\s*parseIhdr \(\[([0-9,\s]*)\]\s*"
+        r"theorem Png\.Spec\.reads_header_1920x1080 :\s*parseIhdr \(\[([0-9,\s]*)\]\s*"
         r":\s*List UInt8\) =\s*some \{([^}]*)\}",
         src,
     )
@@ -1156,7 +1156,7 @@ def spec_examples():
             + make_chunk(b"IDAT", zlib.compress(raw_image(w, h, d, t, i)))
             + make_chunk(b"IEND", b"")
         )
-        found.append(("Spec.reads_header_1920x1080", data, ihdr, (w, h, d, t, i)))
+        found.append(("Png.Spec.reads_header_1920x1080", data, ihdr, (w, h, d, t, i)))
     return found
 
 
@@ -1187,7 +1187,7 @@ def run_spec_examples():
     cases = spec_examples()
     if len(cases) != 2:
         failures.append(
-            f"Spec.lean accepted inputs: found {len(cases)} of the 2 statements; "
+            f"Png/Spec.lean accepted inputs: found {len(cases)} of the 2 statements; "
             "the harness could not read them"
         )
     own_ok = 0
@@ -1198,11 +1198,11 @@ def run_spec_examples():
         else:
             failures.append(f"{name}: {wrong}")
     lines.append(
-        f"Accepted inputs stated in Spec.lean, read from that file: {own_ok} of "
+        f"Accepted inputs stated in Png/Spec.lean, read from that file: {own_ok} of "
         f"{len(cases)} agree with the harness's own reading of the bytes"
     )
     answers, problems = ask_all([header_request(data) for _, data, _, _ in cases])
-    failures += [f"Spec.lean accepted inputs: tool problem: {p}" for p in problems]
+    failures += [f"Png/Spec.lean accepted inputs: tool problem: {p}" for p in problems]
     tool_ok = 0
     for (name, _, _, fields), ans in zip(cases, answers):
         want = header_line(*fields)
@@ -1211,16 +1211,16 @@ def run_spec_examples():
         else:
             failures.append(f"{name} through `header`: want {want!r}, got {ans!r}")
     lines.append(
-        f"Accepted inputs stated in Spec.lean, through `header`: {tool_ok} of "
+        f"Accepted inputs stated in Png/Spec.lean, through `header`: {tool_ok} of "
         f"{len(cases)} answered with the stated header"
     )
     version, why = build_libpng()
     if version is None:
-        lines.append(f"Accepted inputs stated in Spec.lean, through libpng: skipped, {why}")
+        lines.append(f"Accepted inputs stated in Png/Spec.lean, through libpng: skipped, {why}")
         return lines, failures
     lp = ask_libpng([f"full {data.hex()}" for _, data, _, _ in cases])
     if lp is None:
-        failures.append("Spec.lean accepted inputs: the libpng oracle did not answer")
+        failures.append("Png/Spec.lean accepted inputs: the libpng oracle did not answer")
         return lines, failures
     lp_ok = 0
     for (name, _, _, fields), got in zip(cases, lp):
@@ -1231,14 +1231,14 @@ def run_spec_examples():
         else:
             failures.append(f"{name} through libpng: want {want!r}, got {got!r}")
     lines.append(
-        f"Accepted inputs stated in Spec.lean, through libpng ({version}), "
+        f"Accepted inputs stated in Png/Spec.lean, through libpng ({version}), "
         f"decoded in full: {lp_ok} of {len(cases)} read with the stated header"
     )
     return lines, failures
 
 
 # ---------------------------------------------------------------- the
-# axiom check. Proofs/Verify.lean prints `#print axioms` for the
+# axiom check. Png/Proofs/Verify.lean prints `#print axioms` for the
 # headline theorems in Png.Proofs and for every theorem
 # comparator.json names. Each must have its line, and each may
 # depend on these three axioms and no other: a `sorryAx`, or any
@@ -1372,14 +1372,14 @@ def main():
         timeout=120,
     ).stdout.strip()
 
-    # The axiom check: Proofs/Verify.lean prints the axioms of the
+    # The axiom check: Png/Proofs/Verify.lean prints the axioms of the
     # headline theorems and of every theorem comparator.json names,
     # with `#print axioms`. The names in that output are read, and
     # any axiom beyond the three standard ones is a failure. The
     # output goes into the results file, in the Axiom check section.
     all_failures += axiom_self_test()
     axiom_run = subprocess.run(
-        ["lake", "env", "lean", "Proofs/Verify.lean"],
+        ["lake", "env", "lean", "Png/Proofs/Verify.lean"],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -1387,7 +1387,7 @@ def main():
     )
     if axiom_run.returncode != 0:
         all_failures.append(
-            f"axiom check: running Proofs/Verify.lean exited {axiom_run.returncode}"
+            f"axiom check: running Png/Proofs/Verify.lean exited {axiom_run.returncode}"
         )
     covered = axiom_names()
     found = read_axioms(axiom_run.stdout)
@@ -1441,7 +1441,7 @@ def main():
     out.append(
         f"The output of `#print axioms` for the {len(HEADLINE)} headline theorems "
         f"and the {len(covered) - len(HEADLINE)} theorems `comparator.json` names, "
-        "from `lake env lean Proofs/Verify.lean`. The harness reads the names, and "
+        "from `lake env lean Png/Proofs/Verify.lean`. The harness reads the names, and "
         "fails on any axiom but "
         + ", ".join(f"`{a}`" for a in AXIOMS_ALLOWED)
         + ". A self-test on planted output (a `sorryAx`, an axiom of a proof's own, "

@@ -18,7 +18,7 @@
   reader keeps: a file that breaks one is refused.
 
   The steps follow the readers: four bytes read and printed again
-  are the same bytes (`be32_u32`, in `Proofs/Header.lean`); one
+  are the same bytes (`be32_u32`, in `Png/Proofs/Header.lean`); one
   chunk the chunk reader accepts is a well formed chunk printed in
   front of the rest of the input; a list of chunks read to IEND is
   the printed list, ending in the IEND chunk; then the signature
@@ -26,13 +26,13 @@
 -/
 
 import Png
-import Spec.Defs
-import Proofs.RoundTrip
-import Proofs.Header
+import Png.Spec.Defs
+import Png.Proofs.RoundTrip
+import Png.Proofs.Header
 
 namespace Png.Proofs
 
-open Png Spec
+open Png Png.Spec
 
 /-- Four bytes the reader takes off the front of the input are
     the printed form of the value it returns, and that value is

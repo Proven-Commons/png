@@ -1,16 +1,18 @@
 name = "png"
 version = "0.1.0"
 license = "Apache-2.0"
-defaultTargets = ["Png", "Spec", "Proofs", "png"]
+defaultTargets = ["Png", "PngSpec", "PngProofs", "png"]
 
 [[lean_lib]]
 name = "Png"
 
 [[lean_lib]]
-name = "Proofs"
+name = "PngSpec"
+roots = ["Png.Spec"]
 
 [[lean_lib]]
-name = "Spec"
+name = "PngProofs"
+roots = ["Png.Proofs"]
 
 [[lean_exe]]
 name = "png"

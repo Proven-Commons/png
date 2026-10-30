@@ -17,11 +17,11 @@
 -/
 
 import Png
-import Spec.Defs
+import Png.Spec.Defs
 
 namespace Png.Proofs
 
-open Png Spec
+open Png Png.Spec
 
 /-- A byte printed from a number reads back as the number modulo
     256. -/

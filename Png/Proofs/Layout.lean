@@ -1,6 +1,6 @@
 /-
   The byte layout: the bytes the chunk printer and the header
-  printer write, stated with `Spec.bigEndian4`, the four bytes of
+  printer write, stated with `Png.Spec.bigEndian4`, the four bytes of
   a number most significant first, and the type bytes and the
   letter test the chunk rules use. The round trips and their
   converses tie each reader to its printer; these tie each
@@ -15,11 +15,11 @@
 -/
 
 import Png
-import Spec.Defs
+import Png.Spec.Defs
 
 namespace Png.Proofs
 
-open Png Spec
+open Png Png.Spec
 
 /-- A number's byte is the byte of its last base 256 digit. -/
 theorem toUInt8_eq_ofNat_mod (n : Nat) : n.toUInt8 = UInt8.ofNat (n % 256) := by
