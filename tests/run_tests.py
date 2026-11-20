@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Tests for the Lean PNG chunk parser and printer.
 
-Four parts.
+Seven parts. Parts 1 to 4 are the slice 1 suite, unchanged.
+Part 5 is slice 2: the IHDR header read through the `header`
+request. Part 6 checks the accepted inputs stated in
+Png/Spec.lean. Part 7 compares the header read with libpng, where libpng is
+installed.
 
 1. Real PNG files built with Python zlib: an IHDR chunk (the
    width, height, bit depth, and colour type are stated per file
@@ -30,6 +34,44 @@ Four parts.
 
 4. Malformed request lines must be answered `error`.
 
+5. The header read (slice 2). The same real files are asked
+   through `header`, and their decoded fields are checked. Hand
+   built headers cover every colour type with each depth the
+   PNG specification allows it. An enumeration crosses colour
+   types 0 to 12 and 255 with depths 0, 1, 2, 3, 4, 5, 8, 16,
+   and 255, settled by the allowed table written in this
+   harness. Mutations (a zero width, a zero height, a width of
+   2^31, a height of 2^31, a width of 2^32 - 1, a height of
+   2^32 - 1, a compression byte of 1, a filter byte of 1, an
+   interlace byte of 2, a first chunk of length 12) must be
+   rejected, and a width or height of 2^31 - 1 accepted. A
+   second IHDR chunk must be rejected by `header` and read by
+   `parse`; an IEND chunk with data is an ordinary chunk at both
+   layers. Random well formed headers are built into whole
+   files and checked through `header` for their fields and
+   through `parse` for a byte for byte reprint.
+
+6. The accepted inputs stated in Png/Spec.lean
+   (Png.Spec.reads_real_file_header, a whole file, and
+   Png.Spec.reads_header_1920x1080, 13 header bytes, wrapped in
+   a file with an all zero image), read from that file. The
+   stated header must match the harness's own big endian
+   reading of the bytes, the image data must inflate to the
+   size that header gives, the tool's `header` answer must be
+   the stated header, and so must libpng's, decoding the whole
+   file, where libpng is installed.
+
+7. The libpng comparison. tests/libpng_header.c is built
+   against the system libpng (skipped, and said so, when there
+   is no C compiler or no libpng). Each file is read by libpng
+   and by `header`, and the answers must agree field for field,
+   or both refuse, except in the named differences listed in
+   LIBPNG_NAMED. The files: the real files, the colour type and
+   depth grid, every allowed pair with and without Adam7 at
+   three sizes (with an all zero image libpng decodes), the
+   header rule cases, 150 random well formed headers, and the
+   chunk order cases.
+
     python3 tests/run_tests.py [--seed N] [--count N]
 
 The tool is driven one batch process per chunk of requests, input
@@ -39,7 +81,10 @@ exits non-zero if any check fails. It needs Python 3.11 or later.
 """
 
 import argparse
+import json
 import random
+import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -136,8 +181,13 @@ def run_tool(lines, timeout=TIMEOUT):
     return answers, problem
 
 
+ASKED = [0]
+
+
 def ask_all(lines):
-    """Chunked run_tool. Answers align with lines, or None entries."""
+    """Chunked run_tool. Answers align with lines, or None entries.
+    Every request counts toward the record's Inputs."""
+    ASKED[0] += len(lines)
     answers = []
     problems = []
     for i in range(0, len(lines), CHUNK):
@@ -244,9 +294,9 @@ def real_png(width, height, colour_type, rng, split_idat=False, extra=()):
     return b"".join(parts)
 
 
-def run_real(seed):
+def real_files(seed):
     rng = random.Random(seed)
-    files = [
+    return [
         ("1x1, bit depth 8, colour type 2 (RGB)", real_png(1, 1, 2, rng)),
         ("4x3, bit depth 8, colour type 6 (RGBA)", real_png(4, 3, 6, rng)),
         (
@@ -258,6 +308,10 @@ def run_real(seed):
             real_png(7, 5, 2, rng, extra=[(b"tEXt", b"Title\x00A small test")]),
         ),
     ]
+
+
+def run_real(seed):
+    files = real_files(seed)
     lines = []
     failures = []
     answers, problems = ask_all([request(data) for _, data in files])
@@ -496,6 +550,772 @@ def run_malformed():
     return lines, failures
 
 
+# ---------------------------------------------------------------- the
+# header read (slice 2). The strict oracle for this part is the
+# allowed table below, written from the PNG specification: a
+# colour type allows exactly these bit depths.
+
+
+ALLOWED = {0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8], 4: [8, 16], 6: [8, 16]}
+
+
+def ihdr_full(width, height, bit_depth, colour_type, comp=0, filt=0, interlace=0):
+    return struct.pack(
+        ">IIBBBBB", width, height, bit_depth, colour_type, comp, filt, interlace
+    )
+
+
+def header_request(data):
+    return "header " + codes(data)
+
+
+def header_line(width, height, bit_depth, colour_type, interlace):
+    text = f"{width}x{height} d{bit_depth} t{colour_type} i{interlace}"
+    return "ok:" + codes(text.encode("ascii"))
+
+
+def header_file(ihdr_bytes, idat_data=b"\x00\x01\x02\x03"):
+    return (
+        SIG
+        + make_chunk(b"IHDR", ihdr_bytes)
+        + make_chunk(b"IDAT", zlib.compress(idat_data))
+        + make_chunk(b"IEND", b"")
+    )
+
+
+def run_real_headers(seed):
+    """The real files of part 1, asked through `header`. Their
+    (width, height, bit depth, colour type, interlace) are known
+    from how they were built."""
+    known = [(1, 1, 8, 2, 0), (4, 3, 8, 6, 0), (16, 16, 8, 0, 0), (7, 5, 8, 2, 0)]
+    files = real_files(seed)
+    lines = []
+    failures = []
+    answers, problems = ask_all([header_request(data) for _, data in files])
+    for problem in problems:
+        failures.append(f"real headers: tool problem: {problem}")
+    agree = 0
+    for (name, _), fields, ans in zip(files, known, answers):
+        want = header_line(*fields)
+        if ans == want:
+            agree += 1
+        else:
+            failures.append(f"real header {name}: want {want!r}, got {ans!r}")
+    lines.append(
+        f"Real PNG files through `header`: {agree} of {len(files)} decoded "
+        "to the fields they were built with"
+    )
+    return lines, failures
+
+
+def run_header_types():
+    """One file per allowed (colour type, bit depth) pair, the
+    interlace byte alternating, each checked for its fields."""
+    cases = []
+    for ctype in sorted(ALLOWED):
+        for depth in ALLOWED[ctype]:
+            interlace = (len(cases) % 2)
+            cases.append((3, 2, depth, ctype, interlace))
+    lines = []
+    failures = []
+    answers, problems = ask_all(
+        [
+            header_request(
+                header_file(ihdr_full(w, h, d, t, interlace=i))
+            )
+            for (w, h, d, t, i) in cases
+        ]
+    )
+    for problem in problems:
+        failures.append(f"header types: tool problem: {problem}")
+    agree = 0
+    for fields, ans in zip(cases, answers):
+        want = header_line(*fields)
+        if ans == want:
+            agree += 1
+        else:
+            failures.append(f"header type {fields}: want {want!r}, got {ans!r}")
+    lines.append(
+        f"Hand-built headers, every colour type and allowed depth: "
+        f"{agree} of {len(cases)} accepted with their fields"
+    )
+    return lines, failures
+
+
+def run_header_grid():
+    """The enumeration: colour types 0 to 12 and 255, against
+    depths 0, 1, 2, 3, 4, 5, 8, 16, 255. The table settles each."""
+    types = list(range(13)) + [255]
+    depths = [0, 1, 2, 3, 4, 5, 8, 16, 255]
+    cases = [(t, d) for t in types for d in depths]
+    lines = []
+    failures = []
+    answers, problems = ask_all(
+        [
+            header_request(header_file(ihdr_full(2, 2, d, t)))
+            for t, d in cases
+        ]
+    )
+    for problem in problems:
+        failures.append(f"header grid: tool problem: {problem}")
+    agree = 0
+    for (t, d), ans in zip(cases, answers):
+        want = header_line(2, 2, d, t, 0) if d in ALLOWED.get(t, []) else "none"
+        if ans == want:
+            agree += 1
+        else:
+            failures.append(f"header grid type {t} depth {d}: want {want!r}, got {ans!r}")
+    lines.append(
+        f"Header enumeration, {len(types)} colour types by {len(depths)} "
+        f"depths against the allowed table: {agree} of {len(cases)} agreements"
+    )
+    return lines, failures
+
+
+def run_header_mutations():
+    """Each of these files is one change away from a valid one,
+    and each must be rejected by the header read. The CRCs are
+    recomputed, so the rejection is for the header rule itself
+    (except the length 12 case, which the chunk layer rejects)."""
+    good = ihdr_full(4, 3, 8, 6)
+    cases = [
+        ("a width of zero", header_file(ihdr_full(0, 3, 8, 6))),
+        ("a height of zero", header_file(ihdr_full(4, 0, 8, 6))),
+        ("a width of 2^31", header_file(ihdr_full(2**31, 3, 8, 6))),
+        ("a height of 2^31", header_file(ihdr_full(4, 2**31, 8, 6))),
+        ("a width of 2^32 - 1", header_file(ihdr_full(2**32 - 1, 3, 8, 6))),
+        ("a height of 2^32 - 1", header_file(ihdr_full(4, 2**32 - 1, 8, 6))),
+        ("a compression byte of 1", header_file(ihdr_full(4, 3, 8, 6, comp=1))),
+        ("a filter byte of 1", header_file(ihdr_full(4, 3, 8, 6, filt=1))),
+        ("an interlace byte of 2", header_file(ihdr_full(4, 3, 8, 6, interlace=2))),
+        (
+            "a first chunk of length 12",
+            SIG
+            + make_chunk(b"IHDR", good[:12])
+            + make_chunk(b"IDAT", zlib.compress(b"\x00\x01\x02\x03"))
+            + make_chunk(b"IEND", b""),
+        ),
+    ]
+    lines = []
+    failures = []
+    answers, problems = ask_all([header_request(data) for _, data in cases])
+    for problem in problems:
+        failures.append(f"header mutations: tool problem: {problem}")
+    agree = 0
+    for (name, _), ans in zip(cases, answers):
+        if ans == "none":
+            agree += 1
+        else:
+            failures.append(f"header mutation {name}: want none, got {ans!r}")
+    lines.append(f"Header mutations rejected: {agree} of {len(cases)}")
+    return lines, failures
+
+
+def run_header_chunk_order():
+    """Chunk order cases the file level read settles. A second
+    IHDR chunk, right after the first or after IDAT, is refused
+    by `header` (the PNG specification allows one IHDR chunk),
+    while `parse`, the chunk layer, still reads it as an ordinary
+    chunk. An IEND chunk that carries data is an ordinary chunk at
+    both layers: before IDAT, with a real IEND at the end, the
+    file reads; as the last chunk, with no real IEND after it,
+    the file is refused."""
+    ihdr1 = make_chunk(b"IHDR", ihdr_full(1, 1, 8, 2))
+    ihdr2 = make_chunk(b"IHDR", ihdr_full(2, 2, 8, 2))
+    idat = make_chunk(b"IDAT", zlib.compress(b"\x00\x00\x00\x00"))
+    iend = make_chunk(b"IEND", b"")
+    iend_data = make_chunk(b"IEND", b"\x01\x02")
+    # (name, file, header answer, chunk layer accepts?)
+    cases = [
+        ("a second IHDR right after the first", SIG + ihdr1 + ihdr2 + idat + iend, "none", True),
+        ("a second IHDR after IDAT", SIG + ihdr1 + idat + ihdr2 + iend, "none", True),
+        (
+            "an IEND chunk with data before IDAT, a real IEND at the end",
+            SIG + ihdr1 + iend_data + idat + iend,
+            header_line(1, 1, 8, 2, 0),
+            True,
+        ),
+        ("an IEND chunk with data as the last chunk", SIG + ihdr1 + idat + iend_data, "none", False),
+    ]
+    lines = []
+    failures = []
+    answers, problems = ask_all([header_request(data) for _, data, _, _ in cases])
+    for problem in problems:
+        failures.append(f"chunk order: tool problem: {problem}")
+    agree = 0
+    for (name, _, want, _), ans in zip(cases, answers):
+        if ans == want:
+            agree += 1
+        else:
+            failures.append(f"chunk order {name}, header: want {want!r}, got {ans!r}")
+    lines.append(f"Chunk order cases through `header`: {agree} of {len(cases)} agreements")
+    answers, problems = ask_all([request(data) for _, data, _, _ in cases])
+    for problem in problems:
+        failures.append(f"chunk order, parse: tool problem: {problem}")
+    agree = 0
+    for (name, data, _, chunk_ok), ans in zip(cases, answers):
+        want = ("ok:" + codes(data)) if chunk_ok else "none"
+        if ans == want:
+            agree += 1
+        else:
+            failures.append(f"chunk order {name}, parse: want {want[:60]!r}, got {ans!r}")
+    lines.append(
+        f"The same cases through `parse`, the chunk layer: {agree} of {len(cases)} agreements"
+    )
+    return lines, failures
+
+
+def run_header_random(seed, count=200):
+    """Random well formed headers, built into whole files. Each
+    file is checked through `header` for its fields and through
+    `parse` for a byte for byte reprint."""
+    rng = random.Random(seed + 11)
+    cases = []
+    for _ in range(count):
+        ctype = rng.choice(sorted(ALLOWED))
+        depth = rng.choice(ALLOWED[ctype])
+        width = rng.choice([1, 2, 17, 640, 65535, rng.randrange(1, 100001)])
+        height = rng.choice([1, 3, 42, 480, 65535, rng.randrange(1, 100001)])
+        interlace = rng.randrange(0, 2)
+        fields = (width, height, depth, ctype, interlace)
+        cases.append(
+            (fields, header_file(ihdr_full(width, height, depth, ctype, interlace=interlace)))
+        )
+    lines = []
+    failures = []
+    answers, problems = ask_all([header_request(data) for _, data in cases])
+    for problem in problems:
+        failures.append(f"random headers: tool problem: {problem}")
+    answers2, problems2 = ask_all([request(data) for _, data in cases])
+    for problem in problems2:
+        failures.append(f"random headers, parse: tool problem: {problem}")
+    agree = 0
+    for (fields, _), ans in zip(cases, answers):
+        want = header_line(*fields)
+        if ans == want:
+            agree += 1
+        else:
+            failures.append(f"random header {fields}: want {want!r}, got {ans!r}")
+    lines.append(
+        f"Random well formed headers: {agree} of {len(cases)} decoded "
+        "to the fields they were built with"
+    )
+    agree2 = 0
+    for (_, data), ans in zip(cases, answers2):
+        want = "ok:" + codes(data)
+        if ans == want:
+            agree2 += 1
+        else:
+            failures.append(f"random header file: want byte for byte reprint, got {ans!r}")
+    lines.append(
+        f"Random header files through `parse`: {agree2} of {len(cases)} "
+        "reprinted byte for byte"
+    )
+    return lines, failures
+
+
+def run_header_bounds():
+    """The largest width and height the rules allow, 2^31 - 1, are
+    accepted with their fields: the cap is exact on both sides."""
+    top = 2**31 - 1
+    cases = [(top, 3, 8, 6, 0), (4, top, 8, 6, 0), (top, top, 8, 0, 1)]
+    lines = []
+    failures = []
+    answers, problems = ask_all(
+        [header_request(header_file(ihdr_full(w, h, d, t, interlace=i))) for (w, h, d, t, i) in cases]
+    )
+    for problem in problems:
+        failures.append(f"header bounds: tool problem: {problem}")
+    agree = 0
+    for fields, ans in zip(cases, answers):
+        want = header_line(*fields)
+        if ans == want:
+            agree += 1
+        else:
+            failures.append(f"header bound {fields}: want {want!r}, got {ans!r}")
+    lines.append(f"Headers at the cap, width or height 2^31 - 1, accepted: {agree} of {len(cases)}")
+    return lines, failures
+
+
+# ---------------------------------------------------------------- the
+# libpng oracle for the header read. tests/libpng_header.c is built
+# against the system libpng, when there is one, and each file below
+# is read by libpng and by the Lean tool's `header` request. The
+# answers must agree, field for field, except in the named
+# differences listed here, each of which is a rule this reader
+# leaves out on purpose (SPEC.md says so) or a place libpng is more
+# lenient than the PNG specification.
+
+LIBPNG_SRC = ROOT / "tests" / "libpng_header.c"
+LIBPNG_EXE = ROOT / ".lake" / "oracle" / "libpng_header"
+
+CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
+ADAM7 = [(0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2)]
+
+# Named differences: case name -> (what libpng answers, why).
+LIBPNG_NAMED = {
+    "indexed colour with no PLTE chunk": (
+        "libpng refuses the file (no PLTE before IDAT); this reader accepts it",
+        "which chunks must appear between IHDR and IEND is not checked (SPEC.md, Chunks)",
+    ),
+    "an IEND chunk with data before IDAT, a real IEND at the end": (
+        "libpng refuses the file (IEND out of place); this reader accepts it",
+        "an IEND chunk that carries data is an ordinary chunk here (SPEC.md, Chunks)",
+    ),
+    "an IEND chunk with data as the last chunk": (
+        "libpng reads the file, with a warning; this reader refuses it",
+        "the file has no IEND chunk with empty data, which the PNG specification requires (SPEC.md, Chunks)",
+    ),
+}
+
+
+LIBPNG_BUILT = []
+
+
+def build_libpng():
+    """Build the libpng oracle, once per run. Returns (version text,
+    None) or (None, the reason it could not be built)."""
+    if not LIBPNG_BUILT:
+        LIBPNG_BUILT.append(build_libpng_once())
+    return LIBPNG_BUILT[0]
+
+
+def build_libpng_once():
+    cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
+    if not cc:
+        return None, "no C compiler"
+    flags = ["-lpng16"]
+    if shutil.which("pkg-config"):
+        pc = subprocess.run(
+            ["pkg-config", "--cflags", "--libs", "libpng"], capture_output=True, text=True
+        )
+        if pc.returncode == 0 and pc.stdout.split():
+            flags = pc.stdout.split()
+    LIBPNG_EXE.parent.mkdir(parents=True, exist_ok=True)
+    build = subprocess.run(
+        [cc, "-O1", "-o", str(LIBPNG_EXE), str(LIBPNG_SRC), *flags],
+        capture_output=True,
+        text=True,
+    )
+    if build.returncode != 0:
+        tail = " / ".join(build.stderr.strip().splitlines()[-2:])
+        return None, f"libpng oracle did not build: {tail}"
+    run = subprocess.run([str(LIBPNG_EXE)], input="version\n", capture_output=True, text=True)
+    if run.returncode != 0 or not run.stdout.startswith("ok:"):
+        return None, "libpng oracle did not run"
+    return run.stdout[3:].strip(), None
+
+
+def ask_libpng(requests):
+    run = subprocess.run(
+        [str(LIBPNG_EXE)],
+        input="".join(r + "\n" for r in requests),
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT,
+    )
+    answers = run.stdout.split("\n")
+    if answers and answers[-1] == "":
+        answers.pop()
+    if run.returncode != 0 or len(answers) != len(requests):
+        return None
+    return answers
+
+
+def raw_image(width, height, depth, colour_type, interlace):
+    """Filtered scanlines of an all zero image: a filter byte of 0,
+    then zero pixels, for each row of each Adam7 pass when the
+    image is interlaced."""
+    bits = CHANNELS.get(colour_type, 1) * depth
+
+    def rows(w, h):
+        return (b"\x00" * (1 + (w * bits + 7) // 8)) * h
+
+    if interlace != 1:
+        return rows(width, height)
+    out = b""
+    for x0, y0, dx, dy in ADAM7:
+        pw = (width - x0 + dx - 1) // dx if width > x0 else 0
+        ph = (height - y0 + dy - 1) // dy if height > y0 else 0
+        if pw and ph:
+            out += rows(pw, ph)
+    return out
+
+
+def oracle_png(width, height, depth, colour_type, interlace=0, comp=0, filt=0, plte=True, raw=None):
+    """A whole file whose image data decodes, for colour types and
+    depths the table allows: indexed colour gets a one entry PLTE
+    chunk, and the IDAT chunk holds an all zero image."""
+    if raw is None:
+        if colour_type in CHANNELS and depth in ALLOWED.get(colour_type, []):
+            raw = raw_image(width, height, depth, colour_type, interlace)
+        else:
+            raw = b"\x00"
+    parts = [SIG, make_chunk(b"IHDR", ihdr_full(width, height, depth, colour_type, comp, filt, interlace))]
+    if colour_type == 3 and plte:
+        parts.append(make_chunk(b"PLTE", b"\x00\x00\x00"))
+    parts.append(make_chunk(b"IDAT", zlib.compress(raw)))
+    parts.append(make_chunk(b"IEND", b""))
+    return b"".join(parts)
+
+
+def libpng_cases(seed):
+    """(name, mode, file) for the libpng comparison. `full` reads the
+    whole file and decodes the image; `info` reads up to IDAT and is
+    used where the image would be too large to decode."""
+    cases = []
+    for name, data in real_files(seed):
+        cases.append((f"real file: {name}", "full", data))
+    for t in list(range(13)) + [255]:
+        for d in [0, 1, 2, 3, 4, 5, 8, 16, 255]:
+            cases.append((f"grid: colour type {t}, depth {d}", "full", oracle_png(3, 2, d, t)))
+    for t in sorted(ALLOWED):
+        for d in ALLOWED[t]:
+            for i in (0, 1):
+                for w, h in ((1, 1), (3, 2), (9, 9)):
+                    cases.append((f"allowed pair: {w}x{h} d{d} t{t} i{i}", "full", oracle_png(w, h, d, t, i)))
+    top = 2**31 - 1
+    z = b"\x00"  # read up to IDAT only, so the image data is not looked at
+    for name, data in [
+        ("a width of zero", oracle_png(0, 3, 8, 6, raw=z)),
+        ("a height of zero", oracle_png(4, 0, 8, 6, raw=z)),
+        ("a width of 2^31", oracle_png(2**31, 3, 8, 6, raw=z)),
+        ("a height of 2^31", oracle_png(4, 2**31, 8, 6, raw=z)),
+        ("a width of 2^32 - 1", oracle_png(2**32 - 1, 3, 8, 6, raw=z)),
+        ("a height of 2^32 - 1", oracle_png(4, 2**32 - 1, 8, 6, raw=z)),
+        ("a compression byte of 1", oracle_png(4, 3, 8, 6, comp=1, raw=z)),
+        ("a filter byte of 1", oracle_png(4, 3, 8, 6, filt=1, raw=z)),
+        ("an interlace byte of 2", oracle_png(4, 3, 8, 6, interlace=2, raw=z)),
+        ("a width of 2^31 - 1", oracle_png(top, 3, 8, 6, raw=z)),
+        ("a height of 2^31 - 1", oracle_png(4, top, 8, 6, raw=z)),
+        ("a width and height of 2^31 - 1, Adam7", oracle_png(top, top, 8, 0, 1, raw=z)),
+    ]:
+        cases.append((f"header rule: {name}", "info", data))
+    for name, cut in [("an IHDR chunk of 12 bytes", 12), ("an IHDR chunk of 14 bytes", 14)]:
+        body = (ihdr_full(4, 3, 8, 6) + b"\x00")[:cut]
+        data = (
+            SIG
+            + make_chunk(b"IHDR", body)
+            + make_chunk(b"IDAT", zlib.compress(raw_image(4, 3, 8, 6, 0)))
+            + make_chunk(b"IEND", b"")
+        )
+        cases.append((f"header rule: {name}", "info", data))
+    rng = random.Random(seed + 13)
+    for k in range(150):
+        t = rng.choice(sorted(ALLOWED))
+        d = rng.choice(ALLOWED[t])
+        w, h, i = rng.randrange(1, 40), rng.randrange(1, 40), rng.randrange(0, 2)
+        cases.append((f"random: {w}x{h} d{d} t{t} i{i}", "full", oracle_png(w, h, d, t, i)))
+    ihdr1 = make_chunk(b"IHDR", ihdr_full(1, 1, 8, 2))
+    ihdr2 = make_chunk(b"IHDR", ihdr_full(2, 2, 8, 2))
+    idat = make_chunk(b"IDAT", zlib.compress(raw_image(1, 1, 8, 2, 0)))
+    iend = make_chunk(b"IEND", b"")
+    iend_data = make_chunk(b"IEND", b"\x01\x02")
+    cases += [
+        ("a second IHDR right after the first", "full", SIG + ihdr1 + ihdr2 + idat + iend),
+        ("a second IHDR after IDAT", "full", SIG + ihdr1 + idat + ihdr2 + iend),
+        ("an IEND chunk with data before IDAT, a real IEND at the end", "full", SIG + ihdr1 + iend_data + idat + iend),
+        ("an IEND chunk with data as the last chunk", "full", SIG + ihdr1 + idat + iend_data),
+        ("indexed colour with no PLTE chunk", "full", oracle_png(3, 2, 8, 3, plte=False)),
+    ]
+    return cases
+
+
+def lean_header_text(ans):
+    """The Lean tool's `header` answer as the same text libpng's
+    answer uses: `ok:` and the fields, or `none`."""
+    if ans is None or not ans.startswith("ok:"):
+        return ans
+    try:
+        return "ok:" + bytes(int(c) for c in ans[3:].split(",")).decode("ascii")
+    except ValueError:
+        return ans
+
+
+def run_libpng(seed):
+    """Returns (lines, failures, inputs, named): the record lines,
+    the failures, the count of files compared, and the named
+    differences met, with their counts."""
+    version, why = build_libpng()
+    if version is None:
+        return [f"libpng header oracle: skipped, {why}"], [], 0, {}
+    cases = libpng_cases(seed)
+    lp = ask_libpng([f"{mode} {data.hex()}" for _, mode, data in cases])
+    if lp is None:
+        return [f"libpng header oracle ({version}): did not answer"], ["libpng oracle did not answer"], 0, {}
+    lean, problems = ask_all([header_request(data) for _, _, data in cases])
+    failures = [f"libpng comparison: tool problem: {p}" for p in problems]
+    agree = 0
+    named = {}
+    for (name, mode, _), want, got in zip(cases, lp, lean):
+        theirs = want.split(" warnings:")[0]
+        ours = lean_header_text(got)
+        same = (theirs.startswith("ok:") and ours == theirs) or (
+            theirs.startswith("none:") and ours == "none"
+        )
+        if same:
+            agree += 1
+        elif name in LIBPNG_NAMED:
+            named[name] = named.get(name, 0) + 1
+        else:
+            failures.append(f"libpng comparison {name} ({mode}): libpng {want!r}, this reader {ours!r}")
+    lines = [
+        f"libpng header oracle ({version}, `tests/libpng_header.c`): {len(cases)} files, "
+        f"{agree} agreements, {sum(named.values())} named differences"
+    ]
+    for name in LIBPNG_NAMED:
+        if name in [c[0] for c in cases] and name not in named:
+            failures.append(f"libpng comparison {name}: the named difference did not occur")
+    return lines, failures, len(cases), named
+
+
+def run_header_malformed():
+    lines = []
+    failures = []
+    bad = ["header 256", "header 12a", "header 97 98"]
+    answers, problems = ask_all(bad)
+    for problem in problems:
+        failures.append(f"header malformed: tool problem: {problem}")
+    bad_ok = 0
+    for line, ans in zip(bad, answers):
+        if ans == "error":
+            bad_ok += 1
+        else:
+            failures.append(f"header malformed {line!r}: want error, got {ans!r}")
+    lines.append(f"Malformed header requests answered error: {bad_ok} of {len(bad)}")
+    none_ok = 0
+    answers, _ = ask_all(["header", "header "])
+    for ans in answers:
+        if ans == "none":
+            none_ok += 1
+        else:
+            failures.append(f"empty header request: want none, got {ans!r}")
+    lines.append(f"Header requests with no codes answered none: {none_ok} of 2")
+    return lines, failures
+
+
+# ---------------------------------------------------------------- the
+# accepted inputs stated in Png/Spec.lean. Two statements there give
+# an input and the header the reader returns for it:
+# Png.Spec.reads_real_file_header (a whole file) and
+# Png.Spec.reads_header_1920x1080 (13 header bytes). The bytes and
+# the fields are read from Png/Spec.lean itself, so the check is of
+# the statements as written, and each is checked three ways: the
+# harness's own reading of the bytes (big endian width and height,
+# zlib for the CRCs and the image data), the tool's `header` answer,
+# and libpng's answer where libpng is installed.
+
+SPEC_LEAN = ROOT / "Png" / "Spec.lean"
+
+
+def lean_bytes(text):
+    return bytes(int(x) for x in text.replace("\n", " ").split(","))
+
+
+HEADER_FIELDS = ("width", "height", "bitDepth", "colorType", "interlace")
+
+
+def lean_fields(text):
+    """The header a statement gives, written as a structure
+    instance with its five fields named, as (width, height, bit
+    depth, colour type, interlace)."""
+    got = dict(
+        (k, int(v)) for k, v in re.findall(r"(\w+)\s*:=\s*([0-9]+)", text)
+    )
+    if sorted(got) != sorted(HEADER_FIELDS):
+        return None
+    return tuple(got[k] for k in HEADER_FIELDS)
+
+
+def spec_examples():
+    """(theorem, file, the 13 header bytes, the stated fields), read
+    from Png/Spec.lean. The header only statement is wrapped in a
+    whole file: its 13 bytes as the IHDR data, an IDAT chunk holding an
+    all zero image of that size, and IEND."""
+    src = SPEC_LEAN.read_text(encoding="utf-8")
+    found = []
+    m = re.search(
+        r"theorem Png\.Spec\.reads_real_file_header :\s*\(parseFile \(\[([0-9,\s]*)\]\s*"
+        r":\s*List UInt8\)\)\.map Prod\.fst =\s*some \{([^}]*)\}",
+        src,
+    )
+    if m and lean_fields(m.group(2)):
+        data = lean_bytes(m.group(1))
+        found.append(("Png.Spec.reads_real_file_header", data, data[16:29], lean_fields(m.group(2))))
+    m = re.search(
+        r"theorem Png\.Spec\.reads_header_1920x1080 :\s*parseIhdr \(\[([0-9,\s]*)\]\s*"
+        r":\s*List UInt8\) =\s*some \{([^}]*)\}",
+        src,
+    )
+    if m and lean_fields(m.group(2)):
+        ihdr = lean_bytes(m.group(1))
+        w, h, d, t, i = lean_fields(m.group(2))
+        data = (
+            SIG
+            + make_chunk(b"IHDR", ihdr)
+            + make_chunk(b"IDAT", zlib.compress(raw_image(w, h, d, t, i)))
+            + make_chunk(b"IEND", b"")
+        )
+        found.append(("Png.Spec.reads_header_1920x1080", data, ihdr, (w, h, d, t, i)))
+    return found
+
+
+def own_reading(data, ihdr, fields):
+    """The harness's own reading of a stated input: None when it
+    agrees with the stated fields, else what is wrong."""
+    w, h, d, t, i = fields
+    if len(ihdr) != 13:
+        return f"the header is {len(ihdr)} bytes, not 13"
+    got = struct.unpack(">IIBBBBB", ihdr)
+    if got != (w, h, d, t, 0, 0, i):
+        return f"the 13 bytes read big endian are {got}, not {(w, h, d, t, 0, 0, i)}"
+    chunks = oracle_parse(data)
+    if chunks is None:
+        return "the strict oracle refuses the file"
+    if chunks[0] != (b"IHDR", ihdr):
+        return "the file's IHDR data is not the stated 13 bytes"
+    image = zlib.decompress(b"".join(c for typ, c in chunks if typ == b"IDAT"))
+    want = len(raw_image(w, h, d, t, i))
+    if len(image) != want:
+        return f"the image data inflates to {len(image)} bytes, not {want}"
+    return None
+
+
+def run_spec_examples():
+    lines = []
+    failures = []
+    cases = spec_examples()
+    if len(cases) != 2:
+        failures.append(
+            f"Png/Spec.lean accepted inputs: found {len(cases)} of the 2 statements; "
+            "the harness could not read them"
+        )
+    own_ok = 0
+    for name, data, ihdr, fields in cases:
+        wrong = own_reading(data, ihdr, fields)
+        if wrong is None:
+            own_ok += 1
+        else:
+            failures.append(f"{name}: {wrong}")
+    lines.append(
+        f"Accepted inputs stated in Png/Spec.lean, read from that file: {own_ok} of "
+        f"{len(cases)} agree with the harness's own reading of the bytes"
+    )
+    answers, problems = ask_all([header_request(data) for _, data, _, _ in cases])
+    failures += [f"Png/Spec.lean accepted inputs: tool problem: {p}" for p in problems]
+    tool_ok = 0
+    for (name, _, _, fields), ans in zip(cases, answers):
+        want = header_line(*fields)
+        if ans == want:
+            tool_ok += 1
+        else:
+            failures.append(f"{name} through `header`: want {want!r}, got {ans!r}")
+    lines.append(
+        f"Accepted inputs stated in Png/Spec.lean, through `header`: {tool_ok} of "
+        f"{len(cases)} answered with the stated header"
+    )
+    version, why = build_libpng()
+    if version is None:
+        lines.append(f"Accepted inputs stated in Png/Spec.lean, through libpng: skipped, {why}")
+        return lines, failures
+    lp = ask_libpng([f"full {data.hex()}" for _, data, _, _ in cases])
+    if lp is None:
+        failures.append("Png/Spec.lean accepted inputs: the libpng oracle did not answer")
+        return lines, failures
+    lp_ok = 0
+    for (name, _, _, fields), got in zip(cases, lp):
+        w, h, d, t, i = fields
+        want = f"ok:{w}x{h} d{d} t{t} i{i}"
+        if got.split(" warnings:")[0] == want:
+            lp_ok += 1
+        else:
+            failures.append(f"{name} through libpng: want {want!r}, got {got!r}")
+    lines.append(
+        f"Accepted inputs stated in Png/Spec.lean, through libpng ({version}), "
+        f"decoded in full: {lp_ok} of {len(cases)} read with the stated header"
+    )
+    return lines, failures
+
+
+# ---------------------------------------------------------------- the
+# axiom check. Png/Proofs/Verify.lean prints `#print axioms` for the
+# headline theorems in Png.Proofs and for every theorem
+# comparator.json names. Each must have its line, and each may
+# depend on these three axioms and no other: a `sorryAx`, or any
+# axiom a proof adds of its own, is a failure.
+
+AXIOMS_ALLOWED = ("propext", "Classical.choice", "Quot.sound")
+
+HEADLINE = [
+    "Png.Proofs.parse_print",
+    "Png.Proofs.parseIhdr_print",
+    "Png.Proofs.checkPair_iff",
+    "Png.Proofs.parseFile_print",
+    "Png.Proofs.parse_sound",
+    "Png.Proofs.parseIhdr_sound",
+    "Png.Proofs.parseFile_sound",
+    "Png.Proofs.print_layout",
+    "Png.Proofs.printIhdr_layout",
+    "Png.Proofs.isLetter_iff",
+    "Png.Proofs.isIEND_iff",
+]
+
+
+def axiom_names():
+    """The theorems the axiom check covers: the headline theorems,
+    then every theorem comparator.json names."""
+    config = json.loads((ROOT / "comparator.json").read_text(encoding="utf-8"))
+    return HEADLINE + list(config["theorem_names"])
+
+
+def read_axioms(text):
+    """The axioms of each theorem in `#print axioms` output, by
+    name. A list may run over several lines."""
+    found = {}
+    for m in re.finditer(r"'([^']+)' depends on axioms: \[([^\]]*)\]", text):
+        found[m.group(1)] = [a.strip() for a in m.group(2).split(",") if a.strip()]
+    for m in re.finditer(r"'([^']+)' does not depend on any axioms", text):
+        found[m.group(1)] = []
+    return found
+
+
+def axiom_failures(found, names):
+    failures = []
+    for name in names:
+        if name not in found:
+            failures.append(f"axiom check: no `#print axioms` output for {name}")
+            continue
+        extra = [a for a in found[name] if a not in AXIOMS_ALLOWED]
+        if extra:
+            failures.append(
+                f"axiom check: {name} depends on {', '.join(extra)}, "
+                "beyond propext, Classical.choice, and Quot.sound"
+            )
+    return failures
+
+
+def axiom_self_test():
+    """The check itself, on planted output: a theorem on sorryAx, one
+    on an axiom of its own, and a missing line must each fail, and
+    clean output must pass. Returns the failures of the check."""
+    names = ["A.clean", "A.none", "A.sorry", "A.own"]
+    planted = (
+        "'A.clean' depends on axioms: [propext,\n Classical.choice, Quot.sound]\n"
+        "'A.none' does not depend on any axioms\n"
+        "'A.sorry' depends on axioms: [propext, sorryAx]\n"
+        "'A.own' depends on axioms: [Quot.sound, A.myAxiom]\n"
+    )
+    got = axiom_failures(read_axioms(planted), names + ["A.missing"])
+    want = [
+        "axiom check: A.sorry depends on sorryAx, beyond propext, Classical.choice, and Quot.sound",
+        "axiom check: A.own depends on A.myAxiom, beyond propext, Classical.choice, and Quot.sound",
+        "axiom check: no `#print axioms` output for A.missing",
+    ]
+    if got != want:
+        return [f"axiom check self-test: planted output gave {got!r}"]
+    return []
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=SEED_DEFAULT)
@@ -523,10 +1343,26 @@ def main():
         run_random(args.seed, args.count),
         run_mutations(args.seed),
         run_malformed(),
+        run_real_headers(args.seed),
+        run_header_types(),
+        run_header_grid(),
+        run_header_mutations(),
+        run_header_chunk_order(),
+        run_header_bounds(),
+        run_header_random(args.seed),
+        run_header_malformed(),
+        run_spec_examples(),
     ):
         lines, failures = part
         all_lines += lines
         all_failures += failures
+    # The record's Inputs: every request of the sections above. The
+    # libpng comparison below runs only where libpng is installed, so
+    # it is counted on its own line, and a run without libpng records
+    # the same Inputs.
+    inputs = ASKED[0]
+    libpng_lines, libpng_failures, libpng_inputs, named = run_libpng(args.seed)
+    all_failures += libpng_failures
 
     lean_version = subprocess.run(
         ["lake", "env", "lean", "--version"],
@@ -536,18 +1372,87 @@ def main():
         timeout=120,
     ).stdout.strip()
 
+    # The axiom check: Png/Proofs/Verify.lean prints the axioms of the
+    # headline theorems and of every theorem comparator.json names,
+    # with `#print axioms`. The names in that output are read, and
+    # any axiom beyond the three standard ones is a failure. The
+    # output goes into the results file, in the Axiom check section.
+    all_failures += axiom_self_test()
+    axiom_run = subprocess.run(
+        ["lake", "env", "lean", "Png/Proofs/Verify.lean"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    if axiom_run.returncode != 0:
+        all_failures.append(
+            f"axiom check: running Png/Proofs/Verify.lean exited {axiom_run.returncode}"
+        )
+    covered = axiom_names()
+    found = read_axioms(axiom_run.stdout)
+    all_failures += axiom_failures(found, covered)
+    axiom_lines = [
+        f"'{name}' depends on axioms: [{', '.join(found[name])}]"
+        for name in covered
+        if name in found
+    ]
+
     out = ["# Test results", ""]
     out.append("Written by `tests/run_tests.py`. Rerun it to check these numbers.")
     out.append("")
     out.append(
         f"- Oracle: Python {sys.version.split()[0]} `zlib` (crc32 and compress), "
-        "plus a strict reading of the plan rules written in the harness"
+        "plus a strict reading of the plan rules written in the harness; "
+        "for the header read, also libpng where it is installed (below)"
     )
     out.append(f"- Lean: {lean_version}")
     out.append(f"- Seed: {args.seed}")
+    out.append(f"- Inputs: {inputs}")
+    out.append(
+        "- Inputs counts every request of the sections below, up to the libpng "
+        "comparison, which is counted on its own line"
+    )
     for line in all_lines:
         out.append(f"- {line}")
-    out.append("- Named differences: none")
+    out.append("")
+    out.append("## libpng comparison of the header read")
+    out.append("")
+    out.append(
+        "Each file is read by libpng (`tests/libpng_header.c`, built against the "
+        "system libpng, with its default width and height limits raised to "
+        "2^31 - 1) and by the tool's `header` request, and the two answers must "
+        "agree: the same fields, or both refuse. The files: the real files, the "
+        "colour type and depth grid, every allowed pair with and without Adam7 at "
+        "three sizes, the header rule cases, 150 random well formed headers, and "
+        "the chunk order cases. Whole files are decoded by libpng, image and all, "
+        "except for the header rule cases, which libpng reads up to IDAT."
+    )
+    out.append("")
+    for line in libpng_lines:
+        out.append(f"- {line}")
+    out.append(f"- Named differences: {sum(named.values())}")
+    for name, count in named.items():
+        what, why = LIBPNG_NAMED[name]
+        out.append(f"- Named difference, {name} ({count}): {what}; {why}")
+    out.append("")
+    out.append("## Axiom check")
+    out.append("")
+    out.append(
+        f"The output of `#print axioms` for the {len(HEADLINE)} headline theorems "
+        f"and the {len(covered) - len(HEADLINE)} theorems `comparator.json` names, "
+        "from `lake env lean Png/Proofs/Verify.lean`. The harness reads the names, and "
+        "fails on any axiom but "
+        + ", ".join(f"`{a}`" for a in AXIOMS_ALLOWED)
+        + ". A self-test on planted output (a `sorryAx`, an axiom of a proof's own, "
+        "a missing line) runs first."
+    )
+    out.append("")
+    for line in axiom_lines:
+        out.append(f"- {line}")
+    out.append("")
+    out.append("## Outcome")
+    out.append("")
     out.append(f"- Failures: {len(all_failures)}")
     for failure in all_failures[:50]:
         out.append(f"- FAILURE: {failure}")

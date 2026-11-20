@@ -1,6 +1,6 @@
 # Specification: png
 
-A PNG chunk parser and printer in Lean. This slice reads the chunk layer only: it does not decode pixels, and it does not inflate IDAT data. A reviewer who did not write this specification approves it, together with any statement file a reviewer adds later. No such file exists yet, so nothing here counts toward the verified bar yet.
+A PNG chunk parser and printer in Lean, with (slice 2) a decoder for the IHDR header. It does not decode pixels, and it does not inflate IDAT data. The claims below are stated as Lean theorems in `Png/Spec.lean`, over the well formedness rules, the table of allowed pairs, and four bytes big endian (`Png.Spec.bigEndian4`) in `Png/Spec/Defs.lean`. A reviewer who did not write this specification or those statements approves them; no reviewer has yet, so nothing here counts toward the verified bar.
 
 Bytes are `List UInt8` throughout.
 
@@ -17,29 +17,129 @@ After the signature come chunks until the input ends. One chunk on the wire is:
 - the data: that many bytes.
 - a CRC: four bytes, big endian, holding the CRC-32 of the type bytes and the data bytes together.
 
+Four bytes big endian means the base 256 digits of the number, most significant first (`Png.Spec.bigEndian4`). This layout is the one the printer writes, by `Png.Spec.print_layout`, and an ASCII letter is a byte from 65 to 90 or from 97 to 122, by `Png.Spec.isLetter_iff`.
+
 The CRC-32 is the one PNG and ZIP share: the ISO 3309 polynomial, reflected, the register starting at all ones and inverted at the end. The implementation is the one in `Png/Crc32.lean`, shaped like the ZIP reader's in Proven-Commons/zip.
 
 ## The checks, in the order the parser makes them
 
 1. The first eight bytes are the signature.
 2. For each chunk, from the front: at least four bytes remain for the length; the length is below 2^31; at least four bytes remain for the type; each type byte is an ASCII letter; at least the length plus four bytes remain for the data and the CRC; the stored CRC equals the CRC-32 computed over the type bytes and the data. Any failure rejects the whole file. There is no partial read.
-3. Reading stops at a chunk whose type is IEND and whose data is empty. That chunk must be the end of the input: any byte after it rejects the file, and running out of input before such a chunk rejects the file.
-4. The first chunk read has type IHDR and a data length of 13.
+3. Reading stops at a chunk whose type is IEND (the bytes 73, 69, 78, 68) and whose data is empty (`Png.Spec.isIEND_iff`). That chunk must be the end of the input: any byte after it rejects the file, and running out of input before such a chunk rejects the file.
+4. The first chunk read has type IHDR (the bytes 73, 72, 68, 82, by `Png.Spec.ihdrType_eq`) and a data length of 13.
 
-A chunk of type IEND that carries data is an ordinary chunk at this layer: reading does not stop at it. No other rule about chunk order is checked: which types may appear, how many times, or in what order past the first and last, is outside this slice. The contents of the IHDR data, past its length, are not checked: width, height, bit depth, and colour type are read as data like any other.
+A chunk of type IEND that carries data is an ordinary chunk, here and in the file level read below: reading does not stop at it. The PNG specification gives IEND an empty data field, so such a chunk is not the IEND chunk, and this reading follows from that: a file in which an IEND chunk with data is followed, at the end, by an IEND chunk with no data is accepted, and a file whose last chunk is an IEND chunk with data has no end and is rejected. libpng differs on two such files: it refuses an IEND chunk with data that comes before IDAT, as out of place, where this reader reads past it; and it reads a file that ends in an IEND chunk with data, with a warning, where this reader refuses it. The test record names both differences. No other rule about chunk order is checked at this layer: which types may appear, how many times, or in what order past the first and last, is outside it. The file level read of slice 2, below, adds one such rule: a single IHDR chunk. At this layer the contents of the IHDR data, past its length, are not checked: width, height, bit depth, and colour type are read as data like any other. The header read of slice 2, below, is a second read on top of this one and does check them.
+
+## The IHDR header (slice 2)
+
+The first chunk's 13 data bytes hold, in order:
+
+- the width: four bytes, big endian.
+- the height: four bytes, big endian.
+- the bit depth: one byte.
+- the colour type: one byte.
+- the compression method: one byte.
+- the filter method: one byte.
+- the interlace method: one byte.
+
+This order is stated as `Png.Spec.printIhdr_layout`, for the bytes the printer writes. With the soundness of the header reader (`Png.Spec.parseIhdr_sound`), the width the reader returns is the value of the first four bytes it read, big endian, and the height the value of the next four. `Png.Spec.reads_header_1920x1080` and `Png.Spec.reads_real_file_header` are worked examples, each with a width and a height that differ.
+
+The decoded header value holds the width and the height as numbers, and the bit depth, the colour type, and the interlace method as bytes. The compression and filter bytes are not held: the PNG specification gives them no choice (the only compression method is 0, the only filter method is 0), so reading checks that each is zero and printing writes zero.
+
+A header reads only when all of these hold:
+
+- the width is above zero and below 2^31, and the height is above zero and below 2^31. The PNG specification caps each of them at 2^31 - 1.
+- the compression byte is zero, and the filter byte is zero.
+- the interlace byte is 0 or 1.
+- the bit depth is one the colour type allows, by this table from the PNG specification:
+
+| Colour type | Meaning | Allowed bit depths |
+|---|---|---|
+| 0 | greyscale | 1, 2, 4, 8, 16 |
+| 2 | truecolour | 8, 16 |
+| 3 | indexed colour | 1, 2, 4, 8 |
+| 4 | greyscale with alpha | 8, 16 |
+| 6 | truecolour with alpha | 8, 16 |
+
+A colour type other than 0, 2, 3, 4, or 6 allows no bit depth, and reading anything but exactly 13 bytes is a rejection.
+
+Printing a header writes the 13 bytes back: width and height big endian, then bit depth, colour type, compression zero, filter zero, interlace (`Png.Spec.printIhdr_layout`).
+
+The file level read (`parseFile`) runs the chunk parse of slice 1 and then reads the first chunk's data as a header. A file whose first chunk is not a valid IHDR in this sense is rejected by that read even when the chunk layer accepts it: a file with a width of zero is the plainest case.
+
+The file level read also rejects a file in which any chunk after the first has type IHDR. The PNG specification allows one IHDR chunk, and it comes first (PNG third edition, 11.2), so a second one, wherever it stands, is a rejection; the header is never read from it. The chunk layer alone (`parse`) still reads such a file, since it does not count chunks.
 
 ## Printing
 
-The printer writes the signature, then each chunk as its length, its type bytes, its data, and the CRC it computes over the type bytes and the data. A file the parser accepts is reprinted byte for byte: the lengths and CRCs it carried were checked against the bytes, so printing writes the same values back.
+The printer writes the signature, then each chunk as its length, its type bytes, its data, and the CRC it computes over the type bytes and the data (`Png.Spec.print_layout`). A file the parser accepts is reprinted byte for byte: the lengths and CRCs it carried were checked against the bytes, so printing writes the same values back. This is proved: a file the parser accepts is the printed form of the chunk list read from it (`Png.Spec.parse_sound`).
 
 ## The claim
 
-The proved claim is a round trip: for every well formed chunk list, parsing what the printer wrote returns the same list. Well formed means the list is a first chunk, then any middle chunks, then the IEND chunk; the first chunk has type IHDR and 13 data bytes; no chunk before the last is the IEND chunk (type IEND with no data); every chunk type is four ASCII letters; and every data length is below 2^31.
+The proved claim of slice 1 is a round trip: for every well formed chunk list, parsing what the printer wrote returns the same list. Well formed means the list is a first chunk, then any middle chunks, then the IEND chunk; the first chunk has type IHDR and 13 data bytes; no chunk before the last is the IEND chunk (type IEND with no data); every chunk type is four ASCII letters; and every data length is below 2^31.
 
-No claim is made that the parser accepts every file the rules above allow, or rejects every file they forbid, beyond what the round trip needs. The test suite checks that behaviour against real PNG files built with Python's zlib and against a strict reading of these rules, and the results record the counts.
+Slice 2 adds three proved claims:
 
-The round trip needs no fact about CRC-32 itself: the parser and the printer compute the same function of the same bytes, so a printed file passes its own CRC checks by construction. That the function is the standard CRC-32 rests on the differential tests against Python zlib's `crc32`.
+- The header round trip: reading the printed bytes of a well formed header gives the header back. Well formed means the width and height are above zero and below 2^31, the interlace byte is 0 or 1, and the bit depth is one the colour type allows.
+- The table is exact: the depth checker agrees with the table above, written out as a list of (colour type, bit depth) pairs, on every colour type byte and every bit depth byte.
+- The file level round trip: a document that is well formed at the chunk layer, whose first chunk's data is the printed form of a well formed header `hd`, and in which no later chunk has type IHDR, prints and reads back whole, and the header the read returns is `hd` itself, not merely some header.
+
+Each round trip has a proved converse, so each reader is pinned to its rule in both directions:
+
+- The chunk parser is sound: a file it accepts is the printed form of the chunk list it returns, and that list is well formed. With the round trip of slice 1, `parse` accepts a file exactly when it is the printed form of a well formed chunk list, and then returns that list.
+- The header reader is sound: a header it accepts is well formed, and the 13 bytes it read are that header's printed form. So a width or height of zero or of 2^31 or more, a nonzero compression or filter byte, an interlace byte above 1, a depth the colour type does not allow (by the table claim), and any length but 13 are all refused.
+- The file level read is sound: a file it accepts is the printed form of the chunk list it returns, that list is well formed at the chunk layer, its first chunk's data is the printed form of the header the read returns, that header is well formed, and no later chunk has type IHDR.
+
+So every rule of this specification that the well formedness rules state is a proved rejection rule.
+
+The round trips and their converses are stated in terms of the printers, so on their own they would also hold for a printer and a reader that agreed on some other layout, such as the height before the width. The layout claims close that:
+
+- The chunk printer writes the layout of the Chunks section above (`Png.Spec.print_layout`).
+- The header printer writes the 13 bytes in the order of the IHDR section above (`Png.Spec.printIhdr_layout`).
+- The letter test, the IHDR type bytes, the type bytes a chunk is compared by, and the IEND chunk test are the ones the checks above name (`Png.Spec.isLetter_iff`, `Png.Spec.ihdrType_eq`, `Png.Spec.typeBytes_eq`, `Png.Spec.isIEND_iff`).
+
+With the round trips and their converses, these fix which bytes each reader accepts and what it returns, for every input, up to the CRC-32 function, which the chunk layout names as the code has it. Two accepted inputs are stated as worked examples: a real 4 by 3 file is read as width 4, height 3, bit depth 8, colour type 6, no interlace (`Png.Spec.reads_real_file_header`), and the 13 bytes of a 1920 by 1080 header as width 1920 and height 1080 (`Png.Spec.reads_header_1920x1080`). The test harness reads both from `Png/Spec.lean` and checks them against its own reading of the bytes and against libpng.
+
+What is not proved is that the rules and the layout are the PNG specification's: that is the reading this document pins. The test suite checks the readers against real PNG files built with Python's zlib and against a strict reading of these rules written in the harness, checks the header read against libpng file by file where libpng is installed, and records the counts, with each difference from libpng named.
+
+The round trip needs no fact about CRC-32 itself: the parser and the printer compute the same function of the same bytes, so a printed file passes its own CRC checks by construction. That the function is the standard CRC-32 is not proved: it rests on the differential tests against Python zlib's `crc32`, and on single inputs, since `Png.Spec.reads_real_file_header` holds only if the function gives the three CRCs zlib wrote into that file.
+
+## Properties and their theorems
+
+Each property above names its theorem. The theorems are stated in `Png/Spec.lean` and proved in `Png/Proofs/SpecProofs.lean`, under the same names. `comparator.json` lists all of them.
+
+| Property | Theorem |
+|----------|---------|
+| Parsing the printed form of a well formed chunk list gives the list back | `Png.Spec.parse_print` |
+| Reading the printed bytes of a well formed IHDR header gives the header back | `Png.Spec.parseIhdr_print` |
+| The depth checker agrees with the written out table of allowed (colour type, bit depth) pairs on every byte pair | `Png.Spec.checkPair_iff` |
+| Printing a fully well formed document whose first chunk holds the printed header `hd`, and reading it back at both layers, gives back `hd` itself and the document | `Png.Spec.parseFile_print` |
+| A file the chunk parser accepts is the printed form of the chunk list it returns, and that list is well formed | `Png.Spec.parse_sound` |
+| A header the header reader accepts is well formed, and the bytes it read are its printed form | `Png.Spec.parseIhdr_sound` |
+| A file the file level read accepts is the printed form of the chunk list it returns, and that list is fully well formed with the header the read returns | `Png.Spec.parseFile_sound` |
+| The chunk printer writes the signature, then each chunk as its length (four bytes big endian), its type bytes, its data, and its CRC-32 (four bytes big endian) | `Png.Spec.print_layout` |
+| The header printer writes the width and the height, four bytes big endian each, then the bit depth, the colour type, zero, zero, and the interlace byte | `Png.Spec.printIhdr_layout` |
+| The letter test holds of the bytes 65 to 90 and 97 to 122, and of no other | `Png.Spec.isLetter_iff` |
+| The IHDR type bytes are 73, 72, 68, 82 | `Png.Spec.ihdrType_eq` |
+| The type bytes the rules compare are a chunk's four type bytes, in order | `Png.Spec.typeBytes_eq` |
+| The IEND chunk is type bytes 73, 69, 78, 68 with no data | `Png.Spec.isIEND_iff` |
+| A real 4 by 3 file is read with header width 4, height 3, bit depth 8, colour type 6, no interlace | `Png.Spec.reads_real_file_header` |
+| The 13 bytes of a 1920 by 1080 header are read as width 1920, height 1080 | `Png.Spec.reads_header_1920x1080` |
+| A file whose first signature byte is wrong is refused | `Png.Spec.rejects_bad_signature` |
+| A file whose IHDR chunk carries a CRC that does not match its type and data is refused | `Png.Spec.rejects_bad_crc` |
+| A file cut short inside its first chunk is refused | `Png.Spec.rejects_truncated_input` |
+| A file whose first chunk holds 12 data bytes is refused: an IHDR chunk holds 13 | `Png.Spec.rejects_first_chunk_length_12` |
+| A file with a width of zero is refused | `Png.Spec.rejects_zero_width` |
+| A file with a height of zero is refused | `Png.Spec.rejects_zero_height` |
+| A file with a width of 2^31 is refused: the width stays below 2^31 | `Png.Spec.rejects_width_at_cap` |
+| A file with a height of 2^31 is refused: the height stays below 2^31 | `Png.Spec.rejects_height_at_cap` |
+| A file with bit depth 4 on colour type 2 is refused: that colour type allows depths 8 and 16 only | `Png.Spec.rejects_illegal_depth` |
+| A file with colour type 1 is refused: 1 is not a PNG colour type, and allows no bit depth | `Png.Spec.rejects_unknown_colour_type` |
+| A file with an interlace byte of 2 is refused: the byte is 0 or 1 | `Png.Spec.rejects_unknown_interlace` |
+| A file with a compression byte of 1 is refused: the only compression method is 0 | `Png.Spec.rejects_nonzero_compression` |
+| A file with a filter byte of 1 is refused: the only filter method is 0 | `Png.Spec.rejects_nonzero_filter` |
+| A file with a second IHDR chunk is refused by the file level read | `Png.Spec.rejects_second_ihdr` |
+| The header reader refuses anything but exactly 13 bytes: here a valid header's first 12 bytes | `Png.Spec.rejects_header_wrong_length` |
 
 ## The command-line tool
 
-`Main.lean` reads one request per line. The only operation is `parse`: the request is the word `parse`, a space, and the byte codes of a PNG file as comma-separated decimal numbers. The answer is `ok:` followed by the byte codes of the canonical reprint of the parsed chunk list, or `none` when the file is rejected. A malformed request line prints `error`. A code above 255 makes the request malformed, since no byte holds it.
+`Main.lean` reads one request per line. The operations are `parse` and `header`: the request is the operation word, a space, and the byte codes of a PNG file as comma-separated decimal numbers. The `parse` answer is `ok:` followed by the byte codes of the canonical reprint of the parsed chunk list, or `none` when the file is rejected. The `header` answer is `ok:` followed by the codes of a text line naming the decoded header fields, or `none` when the file is rejected at either layer. The text is the width in decimal, the letter `x`, the height in decimal, a space, the letter `d`, the bit depth in decimal, a space, the letter `t`, the colour type in decimal, a space, the letter `i`, and the interlace method in decimal: for a 1920 by 1080 file at bit depth 8, colour type 6, no interlace, the text is `1920x1080 d8 t6 i0`, and the answer carries the character codes of that text. A malformed request line prints `error`. A code above 255 makes the request malformed, since no byte holds it.

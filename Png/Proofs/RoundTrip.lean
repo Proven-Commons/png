@@ -17,10 +17,11 @@
 -/
 
 import Png
+import Png.Spec.Defs
 
 namespace Png.Proofs
 
-open Png
+open Png Png.Spec
 
 /-- A byte printed from a number reads back as the number modulo
     256. -/
@@ -100,19 +101,19 @@ theorem parseChunk_printChunk (c : Chunk) (r : List UInt8)
         :: ((c.data ++ be32 (chunkCrc c).toNat) ++ r) := rfl
   rw [e, parseChunk_step, u32_be32 c.data.length hlen32]
   have hge : ¬ c.data.length ≥ 2147483648 := by omega
-  rw [if_neg hge]
+  rw [ite_eq_right hge]
   have hletters : (isLetter c.t1 && isLetter c.t2 && isLetter c.t3
       && isLetter c.t4) = true := by
     simp [h1, h2, h3, h4]
-  rw [if_pos hletters]
+  rw [ite_eq_left hletters]
   rw [List.append_assoc, List.take_left, List.drop_left,
     get4_be32 _ hcrc32]
-  rw [if_neg (by simp : ¬ c.data.length ≠ c.data.length)]
+  rw [ite_eq_right (by simp : ¬ c.data.length ≠ c.data.length)]
   show (if (chunkCrc c).toNat
       = (Crc32.crc32 ([c.t1, c.t2, c.t3, c.t4] ++ c.data)).toNat
     then some (⟨c.t1, c.t2, c.t3, c.t4, c.data⟩, r)
     else none) = some (c, r)
-  rw [if_pos (show (chunkCrc c).toNat
+  rw [ite_eq_left (show (chunkCrc c).toNat
     = (Crc32.crc32 ([c.t1, c.t2, c.t3, c.t4] ++ c.data)).toNat from rfl)]
 
 /-- One step of the chunk list reader, stated for rewriting. -/
@@ -171,7 +172,7 @@ theorem parseChunks_printChunks : ∀ (pre : Doc) (last : Chunk)
           = printChunk c ++ (pre ++ [last]).flatMap printChunk := by
         simp [List.flatMap_cons]
       rw [hform, parseChunks_succ, hpc]
-      simp only [hcnot, Bool.false_eq_true, if_false, hI,
+      simp only [hcnot, Bool.false_eq_true, ite_false, hI,
         List.cons_append]
 
 /-- The signature at the front of a printed document. -/
@@ -223,6 +224,6 @@ theorem parse_print {doc : Doc} (h : WF doc) : parse (print doc) = some doc := b
   show (if head.typeBytes = ihdrType ∧ head.data.length = 13
     then some (head :: mid ++ [iendChunk])
     else none) = some (head :: mid ++ [iendChunk])
-  rw [if_pos ⟨htype, hlen13⟩]
+  rw [ite_eq_left ⟨htype, hlen13⟩]
 
 end Png.Proofs

@@ -7,10 +7,18 @@
 
     parse 137,80,78,...   prints  ok:137,80,78,... or none
 
-  The one operation is `parse`. Its input is the byte codes of a
-  PNG file. Its answer is `ok:` and the byte codes of the
-  canonical reprint of the parsed chunk list, or `none` when the
-  file is rejected.
+  The operations are `parse` and `header`. The input of each is
+  the byte codes of a PNG file. `parse` answers `ok:` and the
+  byte codes of the canonical reprint of the parsed chunk list,
+  or `none` when the file is rejected. `header` reads the file
+  at both layers, the chunk list and the IHDR header decoded
+  from the first chunk's data (slice 2, `Png/Header.lean`), and
+  answers `ok:` and the codes of a text line naming the header
+  fields: the width, an `x`, the height, then ` d` and the bit
+  depth, ` t` and the colour type, ` i` and the interlace
+  method, as in `1920x1080 d8 t6 i0`. It answers `none` when
+  the file is rejected at either layer. The codes are the
+  character codes of that text.
 
   A request is an operation, then optionally one space and its
   numbers; with no numbers after the space, the input is empty. A
@@ -48,6 +56,17 @@ def toBytes (ns : List Nat) : Option (List UInt8) :=
 def showCodes (bs : List UInt8) : String :=
   ",".intercalate (bs.map fun b => toString b.toNat)
 
+/-- The byte codes of a text: the code of each character. The
+    texts built here hold digits, letters, and spaces only, so
+    every code is a byte. -/
+def textCodes (s : String) : List UInt8 :=
+  s.toList.map fun c => c.toNat.toUInt8
+
+/-- The header line: the fields of a decoded IHDR header as one
+    text, in the shape `1920x1080 d8 t6 i0`. -/
+def headerText (h : Ihdr) : String :=
+  s!"{h.width}x{h.height} d{h.bitDepth.toNat} t{h.colorType.toNat} i{h.interlace.toNat}"
+
 /-- The answer to one request, or `none` when the request is
     malformed. -/
 def answer (op : String) (ns : List Nat) : Option String :=
@@ -58,6 +77,13 @@ def answer (op : String) (ns : List Nat) : Option String :=
     | some bs =>
       match parse bs with
       | some v => some ("ok:" ++ showCodes (print v))
+      | none => some "none"
+  | "header" =>
+    match toBytes ns with
+    | none => none
+    | some bs =>
+      match parseFile bs with
+      | some (h, _) => some ("ok:" ++ showCodes (textCodes (headerText h)))
       | none => some "none"
   | _ => none
 
